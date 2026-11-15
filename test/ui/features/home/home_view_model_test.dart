@@ -7,6 +7,7 @@ import 'package:pulse_sight/data/services/heart_rate_scenario_source.dart';
 import 'package:pulse_sight/data/services/heart_rate_source.dart';
 import 'package:pulse_sight/data/services/platform/android_display_service.dart';
 import 'package:pulse_sight/data/services/platform/desktop_overlay_service.dart';
+import 'package:pulse_sight/data/services/platform/macos_app_menu_service.dart';
 import 'package:pulse_sight/data/services/platform/macos_menubar_service.dart';
 import 'package:pulse_sight/data/services/platform/obs_overlay_service.dart';
 import 'package:pulse_sight/domain/models/heart_rate_connection.dart';
@@ -151,6 +152,42 @@ class FakeMenubarDisplay implements MenubarDisplay {
   Future<void> setEnabled(bool enabled) async {
     calls.add('menubar($enabled)');
   }
+
+  @override
+  void dispose() {}
+}
+
+/// 应用菜单 Fake:记录推送状态,保存点击 / 刷新回调供模拟菜单操作。
+class FakeAppMenuDisplay implements AppMenuDisplay {
+  AppMenuStates? lastStates;
+
+  int updateCount = 0;
+
+  void Function(AppMenuToggle)? handler;
+
+  void Function()? refreshHandler;
+
+  @override
+  Future<void> update(AppMenuStates states) async {
+    updateCount++;
+    lastStates = states;
+  }
+
+  @override
+  void setToggleHandler(void Function(AppMenuToggle)? handler) {
+    this.handler = handler;
+  }
+
+  @override
+  void setRefreshHandler(void Function()? handler) {
+    refreshHandler = handler;
+  }
+
+  /// 模拟用户点击菜单条目。
+  void tap(AppMenuToggle toggle) => handler?.call(toggle);
+
+  /// 模拟原生菜单重建时请求刷新状态。
+  void refresh() => refreshHandler?.call();
 
   @override
   void dispose() {}
@@ -583,6 +620,136 @@ void main() {
       expect(await vm.setObsOverlayEnabled(true), isFalse);
 
       vm.dispose();
+    });
+  });
+
+  group('应用菜单', () {
+    late HeartRateRepository repository;
+    late FakeSettingsRepository settings;
+    late FakeDesktopOverlay desktopOverlay;
+    late FakeAppMenuDisplay appMenu;
+    late HomeViewModel viewModel;
+
+    setUp(() {
+      repository = HeartRateRepository(source: FakeHeartRateSource());
+      settings = FakeSettingsRepository();
+      desktopOverlay = FakeDesktopOverlay();
+      appMenu = FakeAppMenuDisplay();
+      viewModel = HomeViewModel(
+        repository: repository,
+        settings: settings,
+        desktopOverlay: desktopOverlay,
+        appMenu: appMenu,
+        obsOverlay: FakeObsOverlayDisplay(),
+      );
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+      repository.dispose();
+    });
+
+    test('init 后注册回调并推送初始状态', () async {
+      await viewModel.init();
+      await pumpEventQueue();
+
+      expect(appMenu.handler, isNotNull);
+      expect(appMenu.updateCount, greaterThan(0));
+      expect(
+        appMenu.lastStates,
+        const AppMenuStates(
+          desktopOverlay: false,
+          mousePassthrough: false,
+          mousePassthroughEnabled: false,
+          // 菜单栏心率默认开启。
+          menubarHeart: true,
+          obsOverlay: false,
+        ),
+      );
+    });
+
+    test('点击菜单条目切换桌面悬浮窗并推送新状态', () async {
+      await viewModel.init();
+      await pumpEventQueue();
+
+      appMenu.tap(AppMenuToggle.desktopOverlay);
+      await pumpEventQueue();
+
+      expect(viewModel.desktopOverlayEnabled, isTrue);
+      expect(desktopOverlay.calls, contains('show(false)'));
+      expect(
+        appMenu.lastStates,
+        const AppMenuStates(
+          desktopOverlay: true,
+          mousePassthrough: false,
+          mousePassthroughEnabled: true,
+          menubarHeart: true,
+          obsOverlay: false,
+        ),
+      );
+    });
+
+    test('悬浮窗关闭时菜单点击鼠标穿透被忽略', () async {
+      await viewModel.init();
+      await pumpEventQueue();
+
+      appMenu.tap(AppMenuToggle.mousePassthrough);
+      await pumpEventQueue();
+
+      expect(viewModel.mousePassthroughEnabled, isFalse);
+    });
+
+    test('悬浮窗开启后菜单点击鼠标穿透生效且联动推送', () async {
+      await viewModel.init();
+      await pumpEventQueue();
+
+      appMenu.tap(AppMenuToggle.desktopOverlay);
+      await pumpEventQueue();
+      appMenu.tap(AppMenuToggle.mousePassthrough);
+      await pumpEventQueue();
+
+      expect(viewModel.mousePassthroughEnabled, isTrue);
+      expect(desktopOverlay.calls, contains('passthrough(true)'));
+      expect(appMenu.lastStates?.mousePassthrough, isTrue);
+      expect(appMenu.lastStates?.mousePassthroughEnabled, isTrue);
+    });
+
+    test('点击菜单条目切换菜单栏心率并推送', () async {
+      await viewModel.init();
+      await pumpEventQueue();
+
+      appMenu.tap(AppMenuToggle.menubarHeart);
+      await pumpEventQueue();
+
+      expect(viewModel.menubarEnabled, isFalse);
+      expect(appMenu.lastStates?.menubarHeart, isFalse);
+    });
+
+    test('点击菜单条目切换 OBS 并持久化', () async {
+      await viewModel.init();
+      await pumpEventQueue();
+
+      appMenu.tap(AppMenuToggle.obsOverlay);
+      await pumpEventQueue();
+
+      expect(viewModel.obsOverlayEnabled, isTrue);
+      expect(settings.store[SettingsKeys.obsOverlayEnabled], isTrue);
+      expect(appMenu.lastStates?.obsOverlay, isTrue);
+    });
+
+    test('refresh 后按当前状态重新推送(菜单重建对齐)', () async {
+      await viewModel.init();
+      await pumpEventQueue();
+      appMenu.tap(AppMenuToggle.desktopOverlay);
+      await pumpEventQueue();
+      final pushed = appMenu.updateCount;
+
+      // 状态项菜单重建时,原生经 refresh 请求当前状态,须重复推送。
+      appMenu.refresh();
+      await pumpEventQueue();
+
+      expect(appMenu.updateCount, greaterThan(pushed));
+      expect(appMenu.lastStates?.desktopOverlay, isTrue);
     });
   });
 }

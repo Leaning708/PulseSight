@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
+import 'package:material_ui/material_ui.dart' show ThemeMode;
 
 import '../../../../data/repositories/settings_repository.dart';
 import '../../../../data/services/platform/android_display_service.dart';
 import '../../../../data/services/platform/desktop_overlay_service.dart';
 import '../../../../data/services/platform/font_list_service.dart';
+import '../../../../data/services/platform/macos_app_menu_service.dart';
 import '../../../../data/services/platform/macos_menubar_service.dart';
 import '../../../../data/services/platform/obs_overlay_service.dart';
 import '../../../../data/services/heart_rate_scenario_source.dart';
@@ -28,6 +30,7 @@ class HomeViewModel extends ChangeNotifier {
     required this._settings,
     this._desktopOverlay,
     this._menubar,
+    this._appMenu,
     this._androidDisplay,
     this._obsOverlay,
   });
@@ -36,6 +39,7 @@ class HomeViewModel extends ChangeNotifier {
   final SettingsRepository _settings;
   final DesktopOverlay? _desktopOverlay;
   final MenubarDisplay? _menubar;
+  final AppMenuDisplay? _appMenu;
   final AndroidDisplay? _androidDisplay;
   final ObsOverlayDisplay? _obsOverlay;
   final FontListService _fontList = FontListService();
@@ -48,6 +52,8 @@ class HomeViewModel extends ChangeNotifier {
   HeartRateConnection _connection = HeartRateConnection.disconnected;
 
   int? _bpm;
+
+  ThemeMode _themeMode = ThemeMode.system;
 
   /// 模拟场景能力;真实数据源为 null。
   HeartRateScenarioSource? _scenarioSource;
@@ -92,6 +98,9 @@ class HomeViewModel extends ChangeNotifier {
   /// 最近一次心率。
   int? get bpm => _bpm;
 
+  /// 界面主题模式(跟随系统 / 浅色 / 深色)。
+  ThemeMode get themeMode => _themeMode;
+
   /// 是否支持模拟场景切换(模拟数据源才有该能力)。
   bool get supportsScenario => _scenarioSource != null;
 
@@ -133,6 +142,11 @@ class HomeViewModel extends ChangeNotifier {
     if (_initialized) return;
     _initialized = true;
 
+    // 应用菜单:注册条目点击与状态刷新回调,须先于显示端恢复——
+    // 恢复菜单栏心率时会创建状态项菜单并立即请求刷新对齐勾选态。
+    _appMenu?.setToggleHandler(_onAppMenuToggle);
+    _appMenu?.setRefreshHandler(_syncAppMenu);
+
     // 字体列表懒加载,完成后通知 UI 刷新字体下拉。
     unawaited(_fontList.load().then((_) => notifyListeners()));
 
@@ -155,6 +169,10 @@ class HomeViewModel extends ChangeNotifier {
     });
 
     final values = await _settings.loadAll();
+    _themeMode = ThemeMode.values.firstWhere(
+      (mode) => mode.name == values[SettingsKeys.themeMode],
+      orElse: () => ThemeMode.system,
+    );
     _desktopOverlayEnabled =
         (values[SettingsKeys.desktopOverlayEnabled] as bool?) ?? false;
     _mousePassthroughEnabled =
@@ -253,6 +271,9 @@ class HomeViewModel extends ChangeNotifier {
     await _androidDisplay?.setStyle(_overlayStyle);
     _heartRateHistory.maxLength = _overlayStyle.chartSampleCount;
     notifyListeners();
+
+    // 推送初始状态到应用菜单(状态项未创建时为无害写入)。
+    unawaited(_syncAppMenu());
   }
 
   /// 连接手环(模拟)。
@@ -275,6 +296,14 @@ class HomeViewModel extends ChangeNotifier {
     await _repository.disconnect();
   }
 
+  /// 切换界面主题模式(跟随系统 / 浅色 / 深色)并持久化。
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (_themeMode == mode) return;
+    _themeMode = mode;
+    notifyListeners();
+    await _settings.setValue(SettingsKeys.themeMode, mode.name);
+  }
+
   /// 开关桌面悬浮窗。
   Future<void> setDesktopOverlayEnabled(bool value) async {
     if (_desktopOverlayEnabled == value) return;
@@ -286,6 +315,7 @@ class HomeViewModel extends ChangeNotifier {
     } else {
       await _desktopOverlay?.hide();
     }
+    unawaited(_syncAppMenu());
   }
 
   /// 开关鼠标穿透。
@@ -295,6 +325,7 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
     await _settings.setValue(SettingsKeys.mousePassthroughEnabled, value);
     await _desktopOverlay?.setPassthrough(value);
+    unawaited(_syncAppMenu());
   }
 
   /// 开关 macOS 菜单栏心率显示。
@@ -304,6 +335,7 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
     await _settings.setValue(SettingsKeys.menubarEnabled, value);
     await _menubar?.setEnabled(value);
+    unawaited(_syncAppMenu());
   }
 
   /// 开关 Android 悬浮窗;权限未授予时返回 false 并不改变开关状态。
@@ -346,7 +378,40 @@ class HomeViewModel extends ChangeNotifier {
       // 服务缓存样式独立于启用时机,启用后立即对齐当前样式。
       await _obsOverlay?.setStyle(_overlayStyle);
     }
+    unawaited(_syncAppMenu());
     return true;
+  }
+
+  /// 应用菜单条目点击:执行与对应开关行等价的切换动作。
+  void _onAppMenuToggle(AppMenuToggle toggle) {
+    switch (toggle) {
+      case AppMenuToggle.desktopOverlay:
+        setDesktopOverlayEnabled(!_desktopOverlayEnabled);
+      case AppMenuToggle.mousePassthrough:
+        // 悬浮窗关闭时菜单条目已置灰,防御性忽略。
+        if (_desktopOverlayEnabled) {
+          setMousePassthroughEnabled(!_mousePassthroughEnabled);
+        }
+      case AppMenuToggle.menubarHeart:
+        setMenubarEnabled(!_menubarEnabled);
+      case AppMenuToggle.obsOverlay:
+        // 启动失败(如端口被占用)时状态不变,由 [_syncAppMenu]
+        // 推送实际状态,菜单勾选自动回弹。
+        setObsOverlayEnabled(!_obsOverlayEnabled);
+    }
+  }
+
+  /// 推送四个开关的勾选 / 可用状态到应用菜单(去重由实现方负责)。
+  Future<void> _syncAppMenu() async {
+    await _appMenu?.update(
+      AppMenuStates(
+        desktopOverlay: _desktopOverlayEnabled,
+        mousePassthrough: _desktopOverlayEnabled && _mousePassthroughEnabled,
+        mousePassthroughEnabled: _desktopOverlayEnabled,
+        menubarHeart: _menubarEnabled,
+        obsOverlay: _obsOverlayEnabled,
+      ),
+    );
   }
 
   /// 更新心形大小(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
@@ -652,6 +717,8 @@ class HomeViewModel extends ChangeNotifier {
   void dispose() {
     _readingsSub?.cancel();
     _connectionSub?.cancel();
+    _appMenu?.setToggleHandler(null);
+    _appMenu?.setRefreshHandler(null);
     super.dispose();
   }
 }

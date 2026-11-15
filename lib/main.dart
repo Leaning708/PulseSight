@@ -4,11 +4,13 @@ import 'dart:io';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'data/repositories/heart_rate_repository.dart';
 import 'data/repositories/settings_repository.dart';
 import 'data/services/platform/android_display_service.dart';
 import 'data/services/platform/desktop_overlay_service.dart';
+import 'data/services/platform/macos_app_menu_service.dart';
 import 'data/services/platform/macos_menubar_service.dart';
 import 'data/services/platform/obs_overlay_service.dart';
 import 'data/services/simulated_heart_rate_source.dart';
@@ -41,6 +43,25 @@ Future<void> main(List<String> args) async {
 }
 
 Future<void> _runMainApp() async {
+  // 主窗口桌面配置:默认尺寸、最小尺寸与窗口标题;隐藏原生标题栏,
+  // 由主界面顶部栏承担拖拽与窗口控制(macOS 保留红绿灯)。
+  if (Platform.isMacOS || Platform.isWindows) {
+    await windowManager.ensureInitialized();
+    await windowManager.waitUntilReadyToShow(
+      const WindowOptions(
+        size: Size(1120, 760),
+        minimumSize: Size(880, 620),
+        center: true,
+        title: 'PulseSight',
+        titleBarStyle: TitleBarStyle.hidden,
+      ),
+      () async {
+        await windowManager.show();
+        await windowManager.focus();
+      },
+    );
+  }
+
   final settings = SharedPreferencesSettingsRepository();
   // 启动时先恢复持久化的模拟场景,再构造数据源,
   // 使连接前的 UI 场景选择与实际生成参数一致。
@@ -66,6 +87,14 @@ Future<void> _runMainApp() async {
     menubar = null;
   }
 
+  // 应用菜单(「显示」菜单的显示端开关条目),仅 macOS 有原生菜单。
+  final AppMenuDisplay? appMenu;
+  if (Platform.isMacOS) {
+    appMenu = MacosAppMenuService();
+  } else {
+    appMenu = null;
+  }
+
   final AndroidDisplay? androidDisplay;
   if (Platform.isAndroid) {
     androidDisplay = AndroidDisplayService(repository: repository);
@@ -85,6 +114,7 @@ Future<void> _runMainApp() async {
     settings: settings,
     desktopOverlay: desktopOverlay,
     menubar: menubar,
+    appMenu: appMenu,
     androidDisplay: androidDisplay,
     obsOverlay: obsOverlay,
   );
@@ -108,12 +138,15 @@ class PulseSightApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'PulseSight',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light,
-      home: Consumer<HomeViewModel>(
-        builder: (_, viewModel, _) => HomeView(viewModel: viewModel),
+    return Consumer<HomeViewModel>(
+      builder: (_, viewModel, _) => MaterialApp(
+        title: 'PulseSight',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        // 主题模式由 HomeViewModel 持久化与切换。
+        themeMode: viewModel.themeMode,
+        home: HomeView(viewModel: viewModel),
       ),
     );
   }
