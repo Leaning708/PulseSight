@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:window_manager/window_manager.dart';
@@ -16,6 +19,31 @@ import '../home_view_model_test.dart'
         FakeScenarioHeartRateSource,
         FakeSettingsRepository;
 
+/// 测试环境无 window_manager 原生插件,mock 基础查询通道。
+void _mockWindowManagerChannel() {
+  const channel = MethodChannel('window_manager');
+  TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, (call) async {
+        switch (call.method) {
+          case 'isMaximized':
+          case 'isFullScreen':
+          case 'isMinimized':
+          case 'isVisible':
+          case 'isAlwaysOnTop':
+          case 'isPreventClose':
+          case 'isSkipTaskbar':
+          case 'isResizable':
+          case 'isFocused':
+            return false;
+        }
+        return null;
+      });
+  addTearDown(
+    () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null),
+  );
+}
+
 /// 按给定窗口尺寸渲染 [HomeView],返回 [viewModel] 与设置 Fake。
 ///
 /// 脚手架与 PulseSightApp 一致,通过 [ListenableBuilder] 跟随
@@ -28,6 +56,7 @@ Future<(HomeViewModel, FakeSettingsRepository)> _pump(
   tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+  _mockWindowManagerChannel();
 
   final settings = FakeSettingsRepository();
   final repository = HeartRateRepository(source: FakeScenarioHeartRateSource());
@@ -85,8 +114,28 @@ void main() {
       expect(find.text('连接手环(模拟)'), findsOneWidget);
       expect(find.byKey(const Key('desktop_pane_display')), findsNothing);
       expect(find.byKey(const Key('desktop_pane_style')), findsNothing);
-      // 测试环境为 macOS:窗口按钮由系统红绿灯承担,不渲染 Windows 自绘按钮。
-      expect(find.byType(WindowCaptionButton), findsNothing);
+      // 窗口控制按钮:Windows 上标题栏由 Flutter 自绘承担,三个按钮
+      // 必须贴主窗口右上角;macOS 由系统红绿灯承担,不渲染。
+      if (Platform.isWindows) {
+        expect(find.byType(WindowCaptionButton), findsNWidgets(3));
+        final windowWidth = tester.view.physicalSize.width;
+        final rects = [
+          for (var i = 0; i < 3; i++)
+            tester.getRect(find.byType(WindowCaptionButton).at(i)),
+        ];
+        // 最右侧按钮贴最右缘,全部贴顶缘,且整组远离标题区域。
+        expect(rects[2].right, windowWidth, reason: '按钮应贴最右缘');
+        for (final rect in rects) {
+          expect(rect.top, 0, reason: '按钮应贴顶缘');
+          expect(
+            rect.left,
+            greaterThan(windowWidth - 200),
+            reason: '按钮应位于右上角而非标题下',
+          );
+        }
+      } else {
+        expect(find.byType(WindowCaptionButton), findsNothing);
+      }
     });
 
     testWidgets('点击导航栏切换详情面板', (tester) async {

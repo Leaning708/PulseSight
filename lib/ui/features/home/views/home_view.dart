@@ -601,7 +601,10 @@ class _WindowsCaptionButtonsState extends State<_WindowsCaptionButtons>
   @override
   Widget build(BuildContext context) {
     final brightness = Theme.of(context).brightness;
+    // 必须收缩为内容宽度(mainAxisSize.min):Row 默认占满可用宽度,
+    // 三个按钮会被排到行的最左侧,叠在标题上而非右上角。
     return Row(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         WindowCaptionButton.minimize(
