@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pulse_sight/data/repositories/heart_rate_repository.dart';
 import 'package:pulse_sight/data/repositories/settings_repository.dart';
+import 'package:pulse_sight/data/services/heart_rate_scenario_source.dart';
 import 'package:pulse_sight/data/services/heart_rate_source.dart';
 import 'package:pulse_sight/data/services/platform/android_display_service.dart';
 import 'package:pulse_sight/data/services/platform/desktop_overlay_service.dart';
 import 'package:pulse_sight/data/services/platform/macos_menubar_service.dart';
+import 'package:pulse_sight/data/services/platform/obs_overlay_service.dart';
 import 'package:pulse_sight/domain/models/heart_rate_connection.dart';
+import 'package:pulse_sight/domain/models/heart_rate_scenario.dart';
 import 'package:pulse_sight/domain/models/overlay_style.dart';
 import 'package:pulse_sight/ui/features/home/view_models/home_view_model.dart';
 
@@ -59,6 +62,46 @@ class FakeHeartRateSource implements HeartRateSource {
     _bpmController.close();
     _connectionController.close();
   }
+}
+
+/// 在 [FakeHeartRateSource] 之上追加模拟场景能力的 Fake。
+class FakeScenarioHeartRateSource extends FakeHeartRateSource
+    implements HeartRateScenarioSource {
+  final List<HeartRateScenario> setCalls = [];
+
+  @override
+  HeartRateScenario scenario = HeartRateScenario.medium;
+
+  @override
+  void setScenario(HeartRateScenario scenario) {
+    setCalls.add(scenario);
+    this.scenario = scenario;
+  }
+}
+
+/// OBS 浏览器源 Fake:记录调用,可配置启用结果。
+class FakeObsOverlayDisplay implements ObsOverlayDisplay {
+  final List<String> calls = [];
+
+  /// setEnabled 的返回值;false 模拟端口被占用等启动失败。
+  bool setEnabledResult = true;
+
+  @override
+  Future<bool> setEnabled(bool enabled) async {
+    calls.add('setEnabled($enabled)');
+    return setEnabledResult;
+  }
+
+  @override
+  String get overlayUrl => 'http://127.0.0.1:9423/';
+
+  @override
+  Future<void> setStyle(OverlayStyle style) async {
+    calls.add('style(${style.heartSize})');
+  }
+
+  @override
+  void dispose() {}
 }
 
 /// 内存版设置仓库 Fake。
@@ -196,10 +239,7 @@ void main() {
     });
 
     test('未注入 AndroidDisplay 时不支持 Android 显示端', () async {
-      final vm = HomeViewModel(
-        repository: repository,
-        settings: settings,
-      );
+      final vm = HomeViewModel(repository: repository, settings: settings);
       await vm.init();
 
       expect(vm.supportsAndroidDisplay, isFalse);
@@ -247,10 +287,7 @@ void main() {
       await viewModel.setDesktopOverlayEnabled(true);
 
       expect(desktopOverlay.calls, contains('show(false)'));
-      expect(
-        settings.store[SettingsKeys.desktopOverlayEnabled],
-        isTrue,
-      );
+      expect(settings.store[SettingsKeys.desktopOverlayEnabled], isTrue);
 
       await viewModel.setDesktopOverlayEnabled(false);
 
@@ -379,6 +416,173 @@ void main() {
       expect(viewModel.overlayStyle.bpmPosition, BpmPosition.right);
       expect(viewModel.overlayStyle.ecgStyle, EcgStyle.none);
       expect(viewModel.overlayStyle.gap, 10);
+    });
+  });
+
+  group('模拟场景', () {
+    late FakeScenarioHeartRateSource scenarioSource;
+    late HeartRateRepository repository;
+    late FakeSettingsRepository settings;
+    late HomeViewModel viewModel;
+
+    setUp(() {
+      scenarioSource = FakeScenarioHeartRateSource();
+      repository = HeartRateRepository(source: scenarioSource);
+      settings = FakeSettingsRepository();
+      viewModel = HomeViewModel(repository: repository, settings: settings);
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+      repository.dispose();
+    });
+
+    test('init 读取数据源当前场景并暴露能力位', () async {
+      scenarioSource.scenario = HeartRateScenario.low;
+      await viewModel.init();
+
+      expect(viewModel.supportsScenario, isTrue);
+      expect(viewModel.scenario, HeartRateScenario.low);
+    });
+
+    test('setScenario 转发数据源、更新状态并持久化', () async {
+      await viewModel.init();
+
+      await viewModel.setScenario(HeartRateScenario.high);
+
+      expect(scenarioSource.setCalls, [HeartRateScenario.high]);
+      expect(viewModel.scenario, HeartRateScenario.high);
+      expect(settings.store[SettingsKeys.simulatedScenario], 'high');
+    });
+
+    test('重复设置相同场景不产生转发与持久化', () async {
+      await viewModel.init(); // 默认 medium
+
+      await viewModel.setScenario(HeartRateScenario.medium);
+
+      expect(scenarioSource.setCalls, isEmpty);
+      expect(
+        settings.store.containsKey(SettingsKeys.simulatedScenario),
+        isFalse,
+      );
+    });
+
+    test('数据源不支持场景时能力为 false 且切换为空操作', () async {
+      final source = FakeHeartRateSource();
+      final repo = HeartRateRepository(source: source);
+      final vm = HomeViewModel(repository: repo, settings: settings);
+      await vm.init();
+
+      expect(vm.supportsScenario, isFalse);
+      expect(vm.scenario, HeartRateScenario.medium);
+
+      await vm.setScenario(HeartRateScenario.high);
+
+      expect(vm.scenario, HeartRateScenario.medium);
+      expect(
+        settings.store.containsKey(SettingsKeys.simulatedScenario),
+        isFalse,
+      );
+      vm.dispose();
+      repo.dispose();
+    });
+  });
+
+  group('OBS 浏览器源', () {
+    late FakeObsOverlayDisplay obsOverlay;
+    late HeartRateRepository repository;
+    late FakeSettingsRepository settings;
+    late HomeViewModel viewModel;
+
+    setUp(() {
+      obsOverlay = FakeObsOverlayDisplay();
+      repository = HeartRateRepository(source: FakeHeartRateSource());
+      settings = FakeSettingsRepository();
+      viewModel = HomeViewModel(
+        repository: repository,
+        settings: settings,
+        obsOverlay: obsOverlay,
+      );
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+      repository.dispose();
+    });
+
+    test('注入服务时暴露能力位与地址', () async {
+      await viewModel.init();
+
+      expect(viewModel.supportsObsOverlay, isTrue);
+      expect(viewModel.obsOverlayUrl, 'http://127.0.0.1:9423/');
+      expect(viewModel.obsOverlayEnabled, isFalse);
+    });
+
+    test('开启开关调用服务并持久化,样式随之对齐', () async {
+      await viewModel.init();
+
+      final ok = await viewModel.setObsOverlayEnabled(true);
+
+      expect(ok, isTrue);
+      expect(obsOverlay.calls, contains('setEnabled(true)'));
+      expect(obsOverlay.calls, contains('style(64.0)'));
+      expect(viewModel.obsOverlayEnabled, isTrue);
+      expect(settings.store[SettingsKeys.obsOverlayEnabled], isTrue);
+    });
+
+    test('重复开关同一状态为空操作', () async {
+      await viewModel.init();
+      await viewModel.setObsOverlayEnabled(true);
+      obsOverlay.calls.clear();
+
+      final ok = await viewModel.setObsOverlayEnabled(true);
+
+      expect(ok, isTrue);
+      expect(obsOverlay.calls, isEmpty);
+    });
+
+    test('启动失败返回 false 且不持久化', () async {
+      await viewModel.init();
+      obsOverlay.setEnabledResult = false;
+
+      final ok = await viewModel.setObsOverlayEnabled(true);
+
+      expect(ok, isFalse);
+      expect(viewModel.obsOverlayEnabled, isFalse);
+      expect(
+        settings.store.containsKey(SettingsKeys.obsOverlayEnabled),
+        isFalse,
+      );
+    });
+
+    test('init 恢复持久化的开启状态并对齐样式', () async {
+      settings.store[SettingsKeys.obsOverlayEnabled] = true;
+
+      await viewModel.init();
+
+      expect(viewModel.obsOverlayEnabled, isTrue);
+      expect(obsOverlay.calls, contains('setEnabled(true)'));
+      expect(obsOverlay.calls, contains('style(64.0)'));
+    });
+
+    test('init 时启动失败回落为关闭', () async {
+      settings.store[SettingsKeys.obsOverlayEnabled] = true;
+      obsOverlay.setEnabledResult = false;
+
+      await viewModel.init();
+
+      expect(viewModel.obsOverlayEnabled, isFalse);
+    });
+
+    test('未注入服务时能力位为 false 且开关为空操作', () async {
+      final vm = HomeViewModel(repository: repository, settings: settings);
+      await vm.init();
+
+      expect(vm.supportsObsOverlay, isFalse);
+      expect(vm.obsOverlayUrl, isEmpty);
+      expect(await vm.setObsOverlayEnabled(true), isFalse);
+
+      vm.dispose();
     });
   });
 }

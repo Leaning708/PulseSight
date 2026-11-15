@@ -10,7 +10,9 @@ import 'data/repositories/settings_repository.dart';
 import 'data/services/platform/android_display_service.dart';
 import 'data/services/platform/desktop_overlay_service.dart';
 import 'data/services/platform/macos_menubar_service.dart';
+import 'data/services/platform/obs_overlay_service.dart';
 import 'data/services/simulated_heart_rate_source.dart';
+import 'domain/models/heart_rate_scenario.dart';
 import 'ui/core/theme/app_theme.dart';
 import 'ui/features/home/view_models/home_view_model.dart';
 import 'ui/features/home/views/home_view.dart';
@@ -39,8 +41,16 @@ Future<void> main(List<String> args) async {
 }
 
 Future<void> _runMainApp() async {
-  final repository = HeartRateRepository(source: SimulatedHeartRateSource());
   final settings = SharedPreferencesSettingsRepository();
+  // 启动时先恢复持久化的模拟场景,再构造数据源,
+  // 使连接前的 UI 场景选择与实际生成参数一致。
+  final stored = await settings.loadAll();
+  final source = SimulatedHeartRateSource(
+    scenario: HeartRateScenario.fromString(
+      stored[SettingsKeys.simulatedScenario] as String?,
+    ),
+  );
+  final repository = HeartRateRepository(source: source);
 
   final DesktopOverlay? desktopOverlay;
   if (Platform.isMacOS || Platform.isWindows) {
@@ -63,12 +73,20 @@ Future<void> _runMainApp() async {
     androidDisplay = null;
   }
 
+  final ObsOverlayDisplay? obsOverlay;
+  if (Platform.isMacOS || Platform.isWindows) {
+    obsOverlay = ObsOverlayService(repository: repository);
+  } else {
+    obsOverlay = null;
+  }
+
   final viewModel = HomeViewModel(
     repository: repository,
     settings: settings,
     desktopOverlay: desktopOverlay,
     menubar: menubar,
     androidDisplay: androidDisplay,
+    obsOverlay: obsOverlay,
   );
   unawaited(viewModel.init());
 

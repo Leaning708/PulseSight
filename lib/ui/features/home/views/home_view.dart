@@ -1,7 +1,9 @@
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../../domain/models/heart_rate_connection.dart';
+import '../../../../domain/models/heart_rate_scenario.dart';
 import '../../../../domain/models/overlay_style.dart';
 import '../view_models/home_view_model.dart';
 import '../../../core/widgets/bpm_display.dart';
@@ -30,6 +32,10 @@ class HomeView extends StatelessWidget {
                 children: [
                   const SizedBox(height: 24),
                   _ConnectionSection(viewModel: viewModel),
+                  if (viewModel.supportsScenario) ...[
+                    const SizedBox(height: 24),
+                    _ScenarioSection(viewModel: viewModel),
+                  ],
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 4),
@@ -42,14 +48,12 @@ class HomeView extends StatelessWidget {
                   ],
                   const SizedBox(height: 24),
                   Text(
-                    '当前使用模拟数据源,小米手环蓝牙广播连接将在后续版本提供。',
+                    '当前使用模拟数据源,支持低 / 中 / 高心率场景;小米手环蓝牙广播连接将在后续版本提供。',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.5),
-                        ),
+                      color: Theme.of(context).colorScheme.onSurface
+                          .withValues(alpha: 0.5),
+                    ),
                   ),
                   const SizedBox(height: 24),
                 ],
@@ -95,9 +99,9 @@ class _ConnectionSection extends StatelessWidget {
         BpmDisplay(
           bpm: connected ? viewModel.bpm : null,
           numberStyle: Theme.of(context).textTheme.displaySmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                fontFeatures: [const FontFeature.tabularFigures()],
-              ),
+            fontWeight: FontWeight.w700,
+            fontFeatures: [const FontFeature.tabularFigures()],
+          ),
         ),
         const SizedBox(height: 12),
         Chip(
@@ -114,9 +118,78 @@ class _ConnectionSection extends StatelessWidget {
               ? () => viewModel.connect()
               : () => viewModel.disconnect(),
           icon: Icon(
-            viewModel.canConnect ? Icons.monitor_heart_outlined : Icons.link_off,
+            viewModel.canConnect
+                ? Icons.monitor_heart_outlined
+                : Icons.link_off,
           ),
           label: Text(viewModel.canConnect ? '连接手环(模拟)' : '断开连接'),
+        ),
+      ],
+    );
+  }
+}
+
+/// 模拟心率场景区:低 / 中 / 高三档切换。
+class _ScenarioSection extends StatelessWidget {
+  const _ScenarioSection({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  String _scenarioLabel(HeartRateScenario scenario) {
+    return switch (scenario) {
+      HeartRateScenario.low => '低',
+      HeartRateScenario.medium => '中',
+      HeartRateScenario.high => '高',
+    };
+  }
+
+  String _scenarioDescription(HeartRateScenario scenario) {
+    return switch (scenario) {
+      HeartRateScenario.low =>
+        '静息 / 睡眠,${scenario.minBpm}–${scenario.maxBpm} bpm',
+      HeartRateScenario.medium =>
+        '日常活动,${scenario.minBpm}–${scenario.maxBpm} bpm',
+      HeartRateScenario.high =>
+        '运动状态,${scenario.minBpm}–${scenario.maxBpm} bpm',
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final scenario = viewModel.scenario;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.speed_outlined,
+              size: 18,
+              color: scheme.onSurface.withValues(alpha: 0.7),
+            ),
+            const SizedBox(width: 8),
+            Text('模拟心率场景', style: Theme.of(context).textTheme.titleMedium),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<HeartRateScenario>(
+            segments: [
+              for (final s in HeartRateScenario.values)
+                ButtonSegment(value: s, label: Text(_scenarioLabel(s))),
+            ],
+            selected: {scenario},
+            onSelectionChanged: (selection) =>
+                viewModel.setScenario(selection.first),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _scenarioDescription(scenario),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(color: scheme.onSurface.withValues(alpha: 0.6)),
         ),
       ],
     );
@@ -184,6 +257,21 @@ class _DisplayTogglesSection extends StatelessWidget {
           },
         ),
       ],
+      if (viewModel.supportsObsOverlay)
+        SwitchListTile(
+          secondary: const Icon(Icons.podcasts),
+          title: const Text('OBS 浏览器源'),
+          subtitle: viewModel.obsOverlayEnabled
+              ? _ObsUrlRow(url: viewModel.obsOverlayUrl)
+              : const Text('在 OBS 中添加浏览器源即可录制显示,桌面不显示窗口'),
+          value: viewModel.obsOverlayEnabled,
+          onChanged: (value) async {
+            final ok = await viewModel.setObsOverlayEnabled(value);
+            if (!ok && context.mounted) {
+              _showSnackBar(context, '本地服务启动失败,端口可能被占用');
+            }
+          },
+        ),
     ];
     return Column(children: tiles);
   }
@@ -192,6 +280,48 @@ class _DisplayTogglesSection extends StatelessWidget {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+/// OBS 浏览器源地址行:URL + 复制按钮。
+class _ObsUrlRow extends StatelessWidget {
+  const _ObsUrlRow({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            url,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: scheme.primary),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Tooltip(
+          message: '复制浏览器源地址',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(4),
+            onTap: () async {
+              await Clipboard.setData(ClipboardData(text: url));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(SnackBar(content: Text('已复制浏览器源地址:$url')));
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.copy, size: 16, color: scheme.primary),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -308,10 +438,8 @@ class _OverlayStyleSection extends StatelessWidget {
                       width: current == color ? 3 : 1,
                       color: current == color
                           ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.25),
+                          : Theme.of(context).colorScheme.onSurface
+                                .withValues(alpha: 0.25),
                     ),
                   ),
                 ),
@@ -331,18 +459,14 @@ class _OverlayStyleSection extends StatelessWidget {
                     width: isCustom ? 3 : 1,
                     color: isCustom
                         ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.25),
+                        : Theme.of(context).colorScheme.onSurface
+                              .withValues(alpha: 0.25),
                   ),
                 ),
                 child: Icon(
                   Icons.add,
                   size: 16,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
+                  color: Theme.of(context).colorScheme.onSurface
                       .withValues(alpha: 0.7),
                 ),
               ),
@@ -355,7 +479,10 @@ class _OverlayStyleSection extends StatelessWidget {
 
   /// 打开自定义颜色选择器对话框;确定后返回所选颜色。
   Future<Color?> _pickColor(
-      BuildContext context, Color initial, String title) async {
+    BuildContext context,
+    Color initial,
+    String title,
+  ) async {
     Color temp = initial;
     return showDialog<Color>(
       context: context,
@@ -398,22 +525,18 @@ class _OverlayStyleSection extends StatelessWidget {
       listenable: viewModel,
       builder: (context, _) {
         final style = viewModel.overlayStyle;
-        final connected =
-            viewModel.connection == HeartRateConnection.connected;
+        final connected = viewModel.connection == HeartRateConnection.connected;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            Text('悬浮窗样式',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text('悬浮窗样式', style: Theme.of(context).textTheme.titleMedium),
             Text(
               '更改实时生效并自动保存(需打开上方悬浮窗开关查看)',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withValues(alpha: 0.5),
-                  ),
+                color: Theme.of(context).colorScheme.onSurface
+                    .withValues(alpha: 0.5),
+              ),
             ),
             const SizedBox(height: 12),
             // 实时预览:按当前样式渲染悬浮窗内容。
@@ -425,9 +548,7 @@ class _OverlayStyleSection extends StatelessWidget {
                   color: const Color(0xFF17181C),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
+                    color: Theme.of(context).colorScheme.onSurface
                         .withValues(alpha: 0.2),
                   ),
                 ),
@@ -444,11 +565,9 @@ class _OverlayStyleSection extends StatelessWidget {
               child: Text(
                 '预览(实际悬浮窗为透明背景)',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: 0.5),
-                    ),
+                  color: Theme.of(context).colorScheme.onSurface
+                      .withValues(alpha: 0.5),
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -495,8 +614,7 @@ class _OverlayStyleSection extends StatelessWidget {
               min: 0,
               max: 1.0,
               divisions: 10,
-              labelBuilder: (v) =>
-                  v <= 0 ? '无' : '${(v * 100).round()}%',
+              labelBuilder: (v) => v <= 0 ? '无' : '${(v * 100).round()}%',
               onChanged: viewModel.setOverlayBackgroundOpacity,
               onChangeEnd: (_) => viewModel.persistOverlayStyle(),
             ),
@@ -674,10 +792,7 @@ class _OverlayStyleSection extends StatelessWidget {
             Text('数字位置', style: Theme.of(context).textTheme.labelLarge),
             SegmentedButton<BpmPosition>(
               segments: _bpmPositionLabels.entries
-                  .map((e) => ButtonSegment(
-                        value: e.key,
-                        label: Text(e.value),
-                      ))
+                  .map((e) => ButtonSegment(value: e.key, label: Text(e.value)))
                   .toList(),
               selected: {style.bpmPosition},
               onSelectionChanged: (selection) {
@@ -688,10 +803,7 @@ class _OverlayStyleSection extends StatelessWidget {
             Text('心电图样式', style: Theme.of(context).textTheme.labelLarge),
             SegmentedButton<EcgStyle>(
               segments: _ecgStyleLabels.entries
-                  .map((e) => ButtonSegment(
-                        value: e.key,
-                        label: Text(e.value),
-                      ))
+                  .map((e) => ButtonSegment(value: e.key, label: Text(e.value)))
                   .toList(),
               selected: {style.ecgStyle},
               onSelectionChanged: (selection) {

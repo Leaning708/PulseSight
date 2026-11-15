@@ -8,10 +8,13 @@ import '../../../../data/services/platform/android_display_service.dart';
 import '../../../../data/services/platform/desktop_overlay_service.dart';
 import '../../../../data/services/platform/font_list_service.dart';
 import '../../../../data/services/platform/macos_menubar_service.dart';
+import '../../../../data/services/platform/obs_overlay_service.dart';
+import '../../../../data/services/heart_rate_scenario_source.dart';
 import '../../../../data/repositories/heart_rate_repository.dart';
 import '../../../../domain/models/heart_rate_connection.dart';
 import '../../../../domain/models/heart_rate_reading.dart';
 import '../../../../domain/models/heart_rate_history.dart';
+import '../../../../domain/models/heart_rate_scenario.dart';
 import '../../../../domain/models/overlay_style.dart';
 
 /// 主界面 ViewModel:连接管理与各显示端开关。
@@ -26,6 +29,7 @@ class HomeViewModel extends ChangeNotifier {
     this._desktopOverlay,
     this._menubar,
     this._androidDisplay,
+    this._obsOverlay,
   });
 
   final HeartRateRepository _repository;
@@ -33,6 +37,7 @@ class HomeViewModel extends ChangeNotifier {
   final DesktopOverlay? _desktopOverlay;
   final MenubarDisplay? _menubar;
   final AndroidDisplay? _androidDisplay;
+  final ObsOverlayDisplay? _obsOverlay;
   final FontListService _fontList = FontListService();
 
   StreamSubscription<HeartRateReading>? _readingsSub;
@@ -44,6 +49,11 @@ class HomeViewModel extends ChangeNotifier {
 
   int? _bpm;
 
+  /// 模拟场景能力;真实数据源为 null。
+  HeartRateScenarioSource? _scenarioSource;
+
+  HeartRateScenario _scenario = HeartRateScenario.medium;
+
   bool _desktopOverlayEnabled = false;
 
   bool _mousePassthroughEnabled = false;
@@ -53,6 +63,8 @@ class HomeViewModel extends ChangeNotifier {
   bool _androidOverlayEnabled = false;
 
   bool _statusBarEnabled = false;
+
+  bool _obsOverlayEnabled = false;
 
   OverlayStyle _overlayStyle = OverlayStyle.defaults;
 
@@ -71,11 +83,20 @@ class HomeViewModel extends ChangeNotifier {
   /// 是否支持 Android 显示端(悬浮窗 / 状态栏)。
   bool get supportsAndroidDisplay => _androidDisplay != null;
 
+  /// 是否支持 OBS 浏览器源(macOS / Windows)。
+  bool get supportsObsOverlay => _obsOverlay != null;
+
   /// 当前连接状态。
   HeartRateConnection get connection => _connection;
 
   /// 最近一次心率。
   int? get bpm => _bpm;
+
+  /// 是否支持模拟场景切换(模拟数据源才有该能力)。
+  bool get supportsScenario => _scenarioSource != null;
+
+  /// 当前模拟心率场景。
+  HeartRateScenario get scenario => _scenario;
 
   /// 桌面悬浮窗开关状态。
   bool get desktopOverlayEnabled => _desktopOverlayEnabled;
@@ -91,6 +112,12 @@ class HomeViewModel extends ChangeNotifier {
 
   /// Android 状态栏通知开关状态。
   bool get statusBarEnabled => _statusBarEnabled;
+
+  /// OBS 浏览器源开关状态。
+  bool get obsOverlayEnabled => _obsOverlayEnabled;
+
+  /// OBS 浏览器源地址(供用户粘贴进 OBS)。
+  String get obsOverlayUrl => _obsOverlay?.overlayUrl ?? '';
 
   /// 悬浮窗显示样式。
   OverlayStyle get overlayStyle => _overlayStyle;
@@ -111,6 +138,9 @@ class HomeViewModel extends ChangeNotifier {
 
     _connection = _repository.status;
     _bpm = _repository.currentBpm;
+    // 场景由 main.dart 启动时按持久化值构造,这里读取数据源的实际状态。
+    _scenarioSource = _repository.scenarioSource;
+    _scenario = _scenarioSource?.scenario ?? HeartRateScenario.medium;
     _readingsSub = _repository.readings.listen((reading) {
       _bpm = reading.bpm;
       _heartRateHistory.add(reading.bpm);
@@ -133,51 +163,69 @@ class HomeViewModel extends ChangeNotifier {
     _menubarEnabled = (values[SettingsKeys.menubarEnabled] as bool?) ?? true;
     _androidOverlayEnabled =
         (values[SettingsKeys.androidOverlayEnabled] as bool?) ?? false;
-    _statusBarEnabled = (values[SettingsKeys.statusBarEnabled] as bool?) ?? false;
+    _statusBarEnabled =
+        (values[SettingsKeys.statusBarEnabled] as bool?) ?? false;
+    _obsOverlayEnabled =
+        (values[SettingsKeys.obsOverlayEnabled] as bool?) ?? false;
     _overlayStyle = OverlayStyle(
       heartSize: (values[SettingsKeys.overlayHeartSize] as double?) ?? 64,
       bpmFontSize: (values[SettingsKeys.overlayBpmFontSize] as double?) ?? 20,
       bpmPosition: BpmPosition.fromString(
-          values[SettingsKeys.overlayBpmPosition] as String?),
+        values[SettingsKeys.overlayBpmPosition] as String?,
+      ),
       ecgStyle: EcgStyle.fromString(
-          values[SettingsKeys.overlayEcgStyle] as String?),
+        values[SettingsKeys.overlayEcgStyle] as String?,
+      ),
       gap: (values[SettingsKeys.overlayGap] as double?) ?? 6,
       opacity: (values[SettingsKeys.overlayOpacity] as double?) ?? 1.0,
       backgroundOpacity:
           (values[SettingsKeys.overlayBackgroundOpacity] as double?) ?? 0.0,
-      backgroundColor: _colorFromHex(values[SettingsKeys.overlayBackgroundColor] as String?,
-          OverlayStyle.defaultBackgroundColor),
+      backgroundColor: _colorFromHex(
+        values[SettingsKeys.overlayBackgroundColor] as String?,
+        OverlayStyle.defaultBackgroundColor,
+      ),
       backgroundWidth:
           (values[SettingsKeys.overlayBackgroundWidth] as double?) ?? 130,
       backgroundHeight:
           (values[SettingsKeys.overlayBackgroundHeight] as double?) ?? 170,
-      textColor: _colorFromHex(values[SettingsKeys.overlayTextColor] as String?,
-          OverlayStyle.defaultTextColor),
-      heartColor: _colorFromHex(values[SettingsKeys.overlayHeartColor] as String?,
-          OverlayStyle.defaultHeartColor),
-      ecgColor: _colorFromHex(values[SettingsKeys.overlayEcgColor] as String?,
-          OverlayStyle.defaultEcgColor),
+      textColor: _colorFromHex(
+        values[SettingsKeys.overlayTextColor] as String?,
+        OverlayStyle.defaultTextColor,
+      ),
+      heartColor: _colorFromHex(
+        values[SettingsKeys.overlayHeartColor] as String?,
+        OverlayStyle.defaultHeartColor,
+      ),
+      ecgColor: _colorFromHex(
+        values[SettingsKeys.overlayEcgColor] as String?,
+        OverlayStyle.defaultEcgColor,
+      ),
       showChart: (values[SettingsKeys.overlayShowChart] as bool?) ?? false,
       chartSeconds: (values[SettingsKeys.overlayChartSeconds] as double?) ?? 30,
-      chartLineColor: _colorFromHex(values[SettingsKeys.overlayChartLineColor] as String?,
-          OverlayStyle.defaultChartLineColor),
-      chartHeight:
-          (values[SettingsKeys.overlayChartHeight] as double?) ?? 84,
-      chartSpacing:
-          (values[SettingsKeys.overlayChartSpacing] as double?) ?? 8,
+      chartLineColor: _colorFromHex(
+        values[SettingsKeys.overlayChartLineColor] as String?,
+        OverlayStyle.defaultChartLineColor,
+      ),
+      chartHeight: (values[SettingsKeys.overlayChartHeight] as double?) ?? 84,
+      chartSpacing: (values[SettingsKeys.overlayChartSpacing] as double?) ?? 8,
       showBpmLabel: (values[SettingsKeys.overlayShowBpmLabel] as bool?) ?? true,
       textWeight: (values[SettingsKeys.overlayTextWeight] as double?) ?? 700,
-      textFontFamily:
-          values[SettingsKeys.overlayTextFontFamily] as String?,
+      textFontFamily: values[SettingsKeys.overlayTextFontFamily] as String?,
       heartPulseEnabled:
           (values[SettingsKeys.overlayHeartPulseEnabled] as bool?) ?? true,
       textPulseEnabled:
           (values[SettingsKeys.overlayTextPulseEnabled] as bool?) ?? true,
-      glowRadius: (values[SettingsKeys.overlayGlowRadius] as double?)
-              ?.clamp(0.0, 3.0) ??
+      glowRadius:
+          (values[SettingsKeys.overlayGlowRadius] as double?)?.clamp(
+            0.0,
+            3.0,
+          ) ??
           1.0,
-      glowOpacity: (values[SettingsKeys.overlayGlowOpacity] as double?)
-              ?.clamp(0.0, 1.0) ??
+      glowOpacity:
+          (values[SettingsKeys.overlayGlowOpacity] as double?)?.clamp(
+            0.0,
+            1.0,
+          ) ??
           0.5,
     );
     notifyListeners();
@@ -193,13 +241,33 @@ class HomeViewModel extends ChangeNotifier {
     if (_statusBarEnabled) {
       await _androidDisplay?.setStatusBarEnabled(true);
     }
+    if (_obsOverlayEnabled) {
+      // 端口被占用等启动失败时回落为关闭,不保留虚假的开启状态。
+      final ok = await _obsOverlay?.setEnabled(true) ?? false;
+      if (ok) {
+        await _obsOverlay?.setStyle(_overlayStyle);
+      } else {
+        _obsOverlayEnabled = false;
+      }
+    }
     await _androidDisplay?.setStyle(_overlayStyle);
     _heartRateHistory.maxLength = _overlayStyle.chartSampleCount;
+    notifyListeners();
   }
 
   /// 连接手环(模拟)。
   Future<void> connect() async {
     await _repository.connect();
+  }
+
+  /// 切换模拟心率场景并持久化;数据源不支持场景时为空操作。
+  Future<void> setScenario(HeartRateScenario scenario) async {
+    final source = _scenarioSource;
+    if (source == null || _scenario == scenario) return;
+    source.setScenario(scenario);
+    _scenario = scenario;
+    notifyListeners();
+    await _settings.setValue(SettingsKeys.simulatedScenario, scenario.name);
   }
 
   /// 断开手环。
@@ -265,15 +333,34 @@ class HomeViewModel extends ChangeNotifier {
     return true;
   }
 
+  /// 开关 OBS 浏览器源;本地服务启动失败(如端口被占用)返回 false
+  /// 并不改变开关状态。
+  Future<bool> setObsOverlayEnabled(bool value) async {
+    if (_obsOverlayEnabled == value) return true;
+    final ok = await _obsOverlay?.setEnabled(value) ?? false;
+    if (!ok) return false;
+    _obsOverlayEnabled = value;
+    notifyListeners();
+    await _settings.setValue(SettingsKeys.obsOverlayEnabled, value);
+    if (value) {
+      // 服务缓存样式独立于启用时机,启用后立即对齐当前样式。
+      await _obsOverlay?.setStyle(_overlayStyle);
+    }
+    return true;
+  }
+
   /// 更新心形大小(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
   void setOverlayHeartSize(double value) {
-    _applyOverlayStyle(_overlayStyle.copyWith(heartSize: value.clamp(36.0, 96.0)));
+    _applyOverlayStyle(
+      _overlayStyle.copyWith(heartSize: value.clamp(36.0, 96.0)),
+    );
   }
 
   /// 更新心率数字字号。
   void setOverlayBpmFontSize(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(bpmFontSize: value.clamp(12.0, 36.0)));
+      _overlayStyle.copyWith(bpmFontSize: value.clamp(12.0, 36.0)),
+    );
   }
 
   /// 更新心形与数字的间距。
@@ -283,14 +370,14 @@ class HomeViewModel extends ChangeNotifier {
 
   /// 更新悬浮窗心率内容(心形 + 数字)不透明度。
   void setOverlayOpacity(double value) {
-    _applyOverlayStyle(
-        _overlayStyle.copyWith(opacity: value.clamp(0.1, 1.0)));
+    _applyOverlayStyle(_overlayStyle.copyWith(opacity: value.clamp(0.1, 1.0)));
   }
 
   /// 更新悬浮窗背景板不透明度(0 = 无背景板)。
   void setOverlayBackgroundOpacity(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(backgroundOpacity: value.clamp(0.0, 1.0)));
+      _overlayStyle.copyWith(backgroundOpacity: value.clamp(0.0, 1.0)),
+    );
   }
 
   /// 更新悬浮窗背景板颜色并持久化。
@@ -320,13 +407,15 @@ class HomeViewModel extends ChangeNotifier {
   /// 更新背景板宽度(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
   void setOverlayBackgroundWidth(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(backgroundWidth: value.clamp(100.0, 240.0)));
+      _overlayStyle.copyWith(backgroundWidth: value.clamp(100.0, 240.0)),
+    );
   }
 
   /// 更新背景板高度(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
   void setOverlayBackgroundHeight(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(backgroundHeight: value.clamp(120.0, 280.0)));
+      _overlayStyle.copyWith(backgroundHeight: value.clamp(120.0, 280.0)),
+    );
   }
 
   /// 更新是否显示 “bpm” 标签并持久化。
@@ -338,7 +427,8 @@ class HomeViewModel extends ChangeNotifier {
   /// 更新数字字重并持久化。
   void setOverlayTextWeight(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(textWeight: value.clamp(100.0, 900.0)));
+      _overlayStyle.copyWith(textWeight: value.clamp(100.0, 900.0)),
+    );
     persistOverlayStyle();
   }
 
@@ -354,8 +444,12 @@ class HomeViewModel extends ChangeNotifier {
     if (value) {
       // 折线图需要额外高度与宽度,背景板过小时自动放大(仅一次,可再手动调整)。
       style = style.copyWith(
-        backgroundWidth: style.backgroundWidth < 180 ? 180 : style.backgroundWidth,
-        backgroundHeight: style.backgroundHeight < 240 ? 240 : style.backgroundHeight,
+        backgroundWidth: style.backgroundWidth < 180
+            ? 180
+            : style.backgroundWidth,
+        backgroundHeight: style.backgroundHeight < 240
+            ? 240
+            : style.backgroundHeight,
       );
     }
     _applyOverlayStyle(style);
@@ -378,13 +472,15 @@ class HomeViewModel extends ChangeNotifier {
   /// 更新折线图高度(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
   void setOverlayChartHeight(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(chartHeight: value.clamp(40.0, 160.0)));
+      _overlayStyle.copyWith(chartHeight: value.clamp(40.0, 160.0)),
+    );
   }
 
   /// 更新折线图与内容的间距(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
   void setOverlayChartSpacing(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(chartSpacing: value.clamp(0.0, 24.0)));
+      _overlayStyle.copyWith(chartSpacing: value.clamp(0.0, 24.0)),
+    );
   }
 
   /// 更新心形脉冲开关并持久化。
@@ -402,13 +498,15 @@ class HomeViewModel extends ChangeNotifier {
   /// 更新辉光半径倍率(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
   void setOverlayGlowRadius(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(glowRadius: value.clamp(0.0, 3.0)));
+      _overlayStyle.copyWith(glowRadius: value.clamp(0.0, 3.0)),
+    );
   }
 
   /// 更新辉光透明度倍率(仅更新状态与推送,拖动结束由 [persistOverlayStyle] 落盘)。
   void setOverlayGlowOpacity(double value) {
     _applyOverlayStyle(
-        _overlayStyle.copyWith(glowOpacity: value.clamp(0.0, 1.0)));
+      _overlayStyle.copyWith(glowOpacity: value.clamp(0.0, 1.0)),
+    );
   }
 
   /// 将 ARGB 十六进制字符串解析为 Color,非法值回退 [fallback]。
@@ -442,61 +540,112 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
     _desktopOverlay?.setStyle(style);
     _androidDisplay?.setStyle(style);
+    _obsOverlay?.setStyle(style);
   }
 
   /// 将当前样式持久化。
   Future<void> persistOverlayStyle() async {
     await _settings.setValue(
-        SettingsKeys.overlayHeartSize, _overlayStyle.heartSize);
+      SettingsKeys.overlayHeartSize,
+      _overlayStyle.heartSize,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayBpmFontSize, _overlayStyle.bpmFontSize);
+      SettingsKeys.overlayBpmFontSize,
+      _overlayStyle.bpmFontSize,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayBpmPosition, _overlayStyle.bpmPosition.name);
+      SettingsKeys.overlayBpmPosition,
+      _overlayStyle.bpmPosition.name,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayEcgStyle, _overlayStyle.ecgStyle.name);
+      SettingsKeys.overlayEcgStyle,
+      _overlayStyle.ecgStyle.name,
+    );
     await _settings.setValue(SettingsKeys.overlayGap, _overlayStyle.gap);
     await _settings.setValue(
-        SettingsKeys.overlayOpacity, _overlayStyle.opacity);
+      SettingsKeys.overlayOpacity,
+      _overlayStyle.opacity,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayBackgroundOpacity, _overlayStyle.backgroundOpacity);
-    await _settings.setValue(SettingsKeys.overlayBackgroundColor,
-        _overlayStyle.backgroundColor.toARGB32().toRadixString(16));
+      SettingsKeys.overlayBackgroundOpacity,
+      _overlayStyle.backgroundOpacity,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayBackgroundWidth, _overlayStyle.backgroundWidth);
+      SettingsKeys.overlayBackgroundColor,
+      _overlayStyle.backgroundColor.toARGB32().toRadixString(16),
+    );
     await _settings.setValue(
-        SettingsKeys.overlayBackgroundHeight, _overlayStyle.backgroundHeight);
-    await _settings.setValue(SettingsKeys.overlayTextColor,
-        _overlayStyle.textColor.toARGB32().toRadixString(16));
-    await _settings.setValue(SettingsKeys.overlayHeartColor,
-        _overlayStyle.heartColor.toARGB32().toRadixString(16));
-    await _settings.setValue(SettingsKeys.overlayEcgColor,
-        _overlayStyle.ecgColor.toARGB32().toRadixString(16));
+      SettingsKeys.overlayBackgroundWidth,
+      _overlayStyle.backgroundWidth,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayShowChart, _overlayStyle.showChart);
+      SettingsKeys.overlayBackgroundHeight,
+      _overlayStyle.backgroundHeight,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayChartSeconds, _overlayStyle.chartSeconds);
-    await _settings.setValue(SettingsKeys.overlayChartLineColor,
-        _overlayStyle.chartLineColor.toARGB32().toRadixString(16));
+      SettingsKeys.overlayTextColor,
+      _overlayStyle.textColor.toARGB32().toRadixString(16),
+    );
     await _settings.setValue(
-        SettingsKeys.overlayChartHeight, _overlayStyle.chartHeight);
+      SettingsKeys.overlayHeartColor,
+      _overlayStyle.heartColor.toARGB32().toRadixString(16),
+    );
     await _settings.setValue(
-        SettingsKeys.overlayChartSpacing, _overlayStyle.chartSpacing);
+      SettingsKeys.overlayEcgColor,
+      _overlayStyle.ecgColor.toARGB32().toRadixString(16),
+    );
     await _settings.setValue(
-        SettingsKeys.overlayShowBpmLabel, _overlayStyle.showBpmLabel);
+      SettingsKeys.overlayShowChart,
+      _overlayStyle.showChart,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayShowChart, _overlayStyle.showChart);
+      SettingsKeys.overlayChartSeconds,
+      _overlayStyle.chartSeconds,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayTextWeight, _overlayStyle.textWeight);
-    await _settings.setValue(SettingsKeys.overlayTextFontFamily,
-        _overlayStyle.textFontFamily);
-    await _settings.setValue(SettingsKeys.overlayHeartPulseEnabled,
-        _overlayStyle.heartPulseEnabled);
+      SettingsKeys.overlayChartLineColor,
+      _overlayStyle.chartLineColor.toARGB32().toRadixString(16),
+    );
     await _settings.setValue(
-        SettingsKeys.overlayTextPulseEnabled, _overlayStyle.textPulseEnabled);
+      SettingsKeys.overlayChartHeight,
+      _overlayStyle.chartHeight,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayGlowRadius, _overlayStyle.glowRadius);
+      SettingsKeys.overlayChartSpacing,
+      _overlayStyle.chartSpacing,
+    );
     await _settings.setValue(
-        SettingsKeys.overlayGlowOpacity, _overlayStyle.glowOpacity);
+      SettingsKeys.overlayShowBpmLabel,
+      _overlayStyle.showBpmLabel,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayShowChart,
+      _overlayStyle.showChart,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayTextWeight,
+      _overlayStyle.textWeight,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayTextFontFamily,
+      _overlayStyle.textFontFamily,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayHeartPulseEnabled,
+      _overlayStyle.heartPulseEnabled,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayTextPulseEnabled,
+      _overlayStyle.textPulseEnabled,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayGlowRadius,
+      _overlayStyle.glowRadius,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayGlowOpacity,
+      _overlayStyle.glowOpacity,
+    );
   }
 
   @override

@@ -18,7 +18,8 @@
 ├──────────────────────────────────────────────────────────────────┤
 │ Domain 层                                                        │
 │  domain/models     HeartRateReading / HeartRateHistory /          │
-│                    OverlayStyle / HeartRateConnection             │
+│                    OverlayStyle / HeartRateConnection /           │
+│                    HeartRateScenario                              │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -38,6 +39,15 @@ HeartRateSource(模拟)                    ← 未来:小米手环 BLE 广播实
 ```
 
 每个显示端服务内部订阅 repository 的广播流并转发;样式(OverlayStyle)变更经同一条链路整包 JSON 推送。
+
+## 模拟心率场景(HeartRateScenario)
+
+模拟心率是产品功能而非开发妥协:低(静息/睡眠,45–62 bpm)、中(日常,62–95 bpm)、高(运动,118–175 bpm)三档,枚举常量携带各档基准值与波动区间。
+
+- **能力接口**:`HeartRateScenarioSource`(与 `HeartRateSource` 分离)——场景切换是模拟源特有能力,真实 BLE 源没有该概念。Repository 以 `scenarioSource` 能力探测转发,真实源返回 null,上层据此显隐场景选择 UI,替换数据源时上层无需改动
+- **生成算法**:沿用"随机游走 + 向场景基准值回归";当前值在场景区间外(刚切换)时不钳制,由回归项逐拍自然过渡(约 8–15 秒),避免瞬间跳变;连接建立时以场景基准值起步
+- **UI**:`HomeView._ScenarioSection`(SegmentedButton 低/中/高),经 `HomeViewModel.setScenario` 切换并持久化
+- **持久化**:`SettingsKeys.simulatedScenario`(枚举名字符串);`main.dart` 启动时先读设置再构造数据源,保证 UI 与实际生成参数一致
 
 ## 悬浮窗样式系统(OverlayStyle)
 
@@ -83,6 +93,18 @@ HeartRateSource(模拟)                    ← 未来:小米手环 BLE 广播实
 ### macOS 菜单栏与字体枚举(原生)
 
 - `SystemFontListSupport` 通道 `pulsesight/fonts`:`list` → `CTFontManagerCopyAvailableFontFamilyNames()` 过滤隐藏项排序返回
+
+### OBS 浏览器源叠加层(macOS / Windows)
+
+- 用途:悬浮窗内容只在 OBS 录制/推流画面可见,桌面不显示任何窗口(OS 无法做到"桌面隐形但屏幕采集可见",故走浏览器源方案)
+- `ObsOverlayService`(dart:io 实现,**零新依赖**):仅绑定 `127.0.0.1:9423`(`ObsOverlayService.defaultPort`;测试注入 port 0 由系统分配)
+  - `GET /` → 自包含 HTML 叠加页(`obs_overlay_page.dart` 内嵌字符串,无外部资源)
+  - `GET /ws` → WebSocket;连接即推快照 `{status, bpm, style, history}`(style 为 `OverlayStyle.toJson()`),此后任一变化整包广播
+- 页面视觉逻辑从 Flutter 端精确移植(注释标注来源):脉冲序列 = `HeartbeatPulse.pulseSequence`;ECG = `_ecgWave`/`ecgDrawInfo`(五样式 + 相位 0 不绘制防白点);折线图 = `HeartRateChartPainter` 算法;未连接灰心 = `AppTheme.heartIdle`
+- ⚠️ **同步维护约束**:页面是 Flutter 端视觉逻辑的手工移植,修改悬浮窗相关视觉行为(脉冲/ECG/折线图/样式应用)时必须同步修改 `obs_overlay_page.dart` 的对应移植函数——对照表与操作清单见 `docs/obs-overlay-parity.md`
+- 使用方式:主界面开启「OBS 浏览器源」开关 → 复制显示的 URL → OBS 添加「浏览器」源粘贴即可;录制/推流画面可见、桌面不显示任何窗口
+- 开关 `SettingsKeys.obsOverlayEnabled`(`Future<bool>` 失败契约:端口占用返回 false、状态不落盘);init 恢复时启动失败回落为关闭;样式经 `_applyOverlayStyle` → `setStyle` 推送
+- 页面端:WS 断线 2 秒自动重连;OBS 源尺寸小于面板时等比缩小(FittedBox 行为)
 
 ## 心率折线图(HeartRateChart)
 
