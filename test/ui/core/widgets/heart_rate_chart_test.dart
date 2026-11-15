@@ -4,14 +4,14 @@ import 'package:pulse_sight/ui/core/widgets/heart_rate_chart.dart';
 
 void main() {
   Widget buildChart(List<int> values) => MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 180,
-            height: 84,
-            child: HeartRateChart(values: values, lineColor: Colors.white),
-          ),
-        ),
-      );
+    home: Scaffold(
+      body: SizedBox(
+        width: 180,
+        height: 84,
+        child: HeartRateChart(values: values, lineColor: Colors.white),
+      ),
+    ),
+  );
 
   testWidgets('空数据渲染占位平线无异常', (tester) async {
     await tester.pumpWidget(buildChart([]));

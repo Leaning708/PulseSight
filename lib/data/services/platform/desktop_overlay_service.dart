@@ -138,9 +138,7 @@ class DesktopOverlayService implements DesktopOverlay {
   /// 因此按固定间隔重试推送,直到 handler 就绪并收到最新状态。
   void _scheduleInitialPush() {
     for (final delay in _initialPushDelaysMs) {
-      _initialPushTimers.add(
-        Timer(Duration(milliseconds: delay), _push),
-      );
+      _initialPushTimers.add(Timer(Duration(milliseconds: delay), _push));
     }
   }
 

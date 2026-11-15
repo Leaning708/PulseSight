@@ -41,8 +41,9 @@ class AndroidDisplayService implements AndroidDisplay {
 
   final HeartRateRepository _repository;
 
-  static const MethodChannel _statusBarChannel =
-      MethodChannel('pulsesight/status_bar');
+  static const MethodChannel _statusBarChannel = MethodChannel(
+    'pulsesight/status_bar',
+  );
 
   /// 悬浮窗尺寸(逻辑像素)。
   static const Size overlaySize = Size(130, 170);
@@ -63,7 +64,8 @@ class AndroidDisplayService implements AndroidDisplay {
   @override
   Future<void> setStyle(OverlayStyle style) async {
     if (_lastStyle == style) return;
-    final sizeChanged = _lastStyle.backgroundWidth != style.backgroundWidth ||
+    final sizeChanged =
+        _lastStyle.backgroundWidth != style.backgroundWidth ||
         _lastStyle.backgroundHeight != style.backgroundHeight;
     _lastStyle = style;
     _shareOverlayState();
@@ -128,8 +130,9 @@ class AndroidDisplayService implements AndroidDisplay {
   @override
   Future<bool> setStatusBarEnabled(bool enabled) async {
     if (enabled) {
-      final granted =
-          await _statusBarChannel.invokeMethod<bool>('requestPermission');
+      final granted = await _statusBarChannel.invokeMethod<bool>(
+        'requestPermission',
+      );
       if (granted != true) return false;
       _startStatusBarForwarding();
       await _pushStatusBar();

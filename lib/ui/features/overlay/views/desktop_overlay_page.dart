@@ -69,8 +69,9 @@ class _DesktopOverlayPageState extends State<DesktopOverlayPage> {
         );
         final styleJson = args['style'];
         if (styleJson is Map) {
-          final style =
-              OverlayStyle.fromJson(Map<Object?, Object?>.from(styleJson));
+          final style = OverlayStyle.fromJson(
+            Map<Object?, Object?>.from(styleJson),
+          );
           _viewModel.setStyle(style);
           _applyWindowSize(style);
         }

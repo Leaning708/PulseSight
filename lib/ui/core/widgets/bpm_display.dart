@@ -36,7 +36,8 @@ class BpmDisplay extends StatelessWidget {
     final theme = Theme.of(context);
     final number = Text(
       bpm?.toString() ?? '--',
-      style: numberStyle ??
+      style:
+          numberStyle ??
           theme.textTheme.headlineLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: bpm == null
@@ -50,7 +51,8 @@ class BpmDisplay extends StatelessWidget {
     }
     final label = Text(
       'bpm',
-      style: labelStyle ??
+      style:
+          labelStyle ??
           theme.textTheme.labelLarge?.copyWith(
             color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
           ),
@@ -69,7 +71,11 @@ class BpmDisplay extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
-      children: [number, SizedBox(width: spacing), label],
+      children: [
+        number,
+        SizedBox(width: spacing),
+        label,
+      ],
     );
   }
 }
