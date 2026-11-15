@@ -48,9 +48,26 @@ dev_dependencies:
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
+  # package. See that file for information on deactivating specific lint
+  # rules and activating specific ones.
   flutter_lints: ^6.0.0
+
+  # 图标分发:把 assets/icon 下的源图生成到 macOS / Windows / Android。
+  flutter_launcher_icons: ^0.14.4
+
+# 应用图标配置:源图由 test/icon/app_icon_source_test.dart 生成
+# (生成方式见该文件注释),改动源图后执行 dart run flutter_launcher_icons。
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  adaptive_icon_background: "#17181C"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  ios: false
+  macos:
+    generate: true
+  windows:
+    generate: true
+    icon_size: 256
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
