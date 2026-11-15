@@ -1,16 +1,22 @@
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:material_ui/material_ui.dart';
+import 'dart:io' show Platform;
 
-import '../../../../domain/models/heart_rate_connection.dart';
-import '../../../../domain/models/heart_rate_scenario.dart';
-import '../../../../domain/models/overlay_style.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:window_manager/window_manager.dart';
+
+import '../../../../../domain/models/heart_rate_connection.dart';
+import '../../../core/theme/app_dimens.dart';
+import '../../../core/widgets/status_pill.dart';
 import '../view_models/home_view_model.dart';
-import '../../../core/widgets/bpm_display.dart';
-import '../../../core/widgets/heartbeat_heart.dart';
-import '../../overlay/views/overlay_view.dart';
+import 'sections/connection_section.dart';
+import 'sections/display_toggles_section.dart';
+import 'sections/overlay_style_pane.dart';
+import 'sections/overlay_style_section.dart';
+import 'sections/scenario_section.dart';
 
 /// 主界面:连接管理 + 各显示端开关。
+///
+/// 按窗口宽度自适应([desktopBreakpoint]):宽窗口为设置式布局
+/// (左侧导航栏 + 右侧详情面板),窄窗口保持手机形态的单列布局。
 class HomeView extends StatelessWidget {
   /// 创建主界面;[viewModel] 由 DI 注入。
   const HomeView({super.key, required this.viewModel});
@@ -19,43 +25,346 @@ class HomeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: viewModel,
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= desktopBreakpoint) {
+            return _DesktopHomeBody(viewModel: viewModel);
+          }
+          return _NarrowHomeBody(viewModel: viewModel);
+        },
+      ),
+    );
+  }
+}
+
+/// 窄布局主体:手机形态的单列设置页(与旧版结构保持一致)。
+class _NarrowHomeBody extends StatelessWidget {
+  const _NarrowHomeBody({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PulseSight')),
+      key: const Key('home_narrow_layout'),
+      appBar: AppBar(
+        title: const Text('PulseSight'),
+        actions: [
+          _ThemeModeButton(viewModel: viewModel),
+          const SizedBox(width: AppSpacing.sm),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: const BoxConstraints(maxWidth: homeNarrowMaxWidth),
             child: ListenableBuilder(
               listenable: viewModel,
               builder: (context, _) => ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 children: [
-                  const SizedBox(height: 24),
-                  _ConnectionSection(viewModel: viewModel),
+                  const SizedBox(height: AppSpacing.xxl),
+                  ConnectionSection(viewModel: viewModel),
                   if (viewModel.supportsScenario) ...[
-                    const SizedBox(height: 24),
-                    _ScenarioSection(viewModel: viewModel),
+                    const SizedBox(height: AppSpacing.xxl),
+                    _sectionHeader(context, Icons.speed_outlined, '模拟心率场景'),
+                    const SizedBox(height: AppSpacing.md),
+                    ScenarioSection(viewModel: viewModel),
                   ],
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.xxl),
                   const Divider(),
-                  const SizedBox(height: 4),
-                  _DisplayTogglesSection(viewModel: viewModel),
+                  const SizedBox(height: AppSpacing.xs),
+                  DisplayTogglesSection(viewModel: viewModel),
                   if (viewModel.supportsDesktopOverlay ||
                       viewModel.supportsAndroidDisplay) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.sm),
                     const Divider(),
-                    _OverlayStyleSection(viewModel: viewModel),
+                    const SizedBox(height: AppSpacing.sm),
+                    Text(
+                      '悬浮窗样式',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    Text(
+                      '更改实时生效并自动保存(需打开上方悬浮窗开关查看)',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    OverlayStyleSection(viewModel: viewModel),
                   ],
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.xxl),
+                  _footnote(context),
+                  const SizedBox(height: AppSpacing.xxl),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 区块标题行(图标 + 标题)。
+  Widget _sectionHeader(BuildContext context, IconData icon, String title) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+        const SizedBox(width: AppSpacing.sm),
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
+      ],
+    );
+  }
+}
+
+/// 页脚说明文字。
+Widget _footnote(BuildContext context) {
+  final scheme = Theme.of(context).colorScheme;
+  return Text(
+    '当前使用模拟数据源,支持低 / 中 / 高心率场景;小米手环蓝牙广播连接将在后续版本提供。',
+    textAlign: TextAlign.center,
+    style: Theme.of(context).textTheme.bodySmall
+        ?.copyWith(color: scheme.onSurfaceVariant),
+  );
+}
+
+/// 详情面板页头:标题 + 副标题。
+Widget _paneHeader(BuildContext context, String title, String subtitle) {
+  final scheme = Theme.of(context).colorScheme;
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        title,
+        style: Theme.of(context).textTheme.titleLarge
+            ?.copyWith(fontWeight: FontWeight.w600),
+      ),
+      const SizedBox(height: AppSpacing.xs),
+      Text(
+        subtitle,
+        style: Theme.of(context).textTheme.bodySmall
+            ?.copyWith(color: scheme.onSurfaceVariant),
+      ),
+    ],
+  );
+}
+
+/// 详情面板内容区的统一内边距。
+const EdgeInsets _panePadding = EdgeInsets.fromLTRB(
+  AppSpacing.xxl,
+  AppSpacing.xl,
+  AppSpacing.xxl,
+  AppSpacing.xxl,
+);
+
+/// 桌面设置式布局主体:顶栏 + 左侧导航栏 + 右侧详情面板(IndexedStack)。
+class _DesktopHomeBody extends StatefulWidget {
+  const _DesktopHomeBody({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  @override
+  State<_DesktopHomeBody> createState() => _DesktopHomeBodyState();
+}
+
+class _DesktopHomeBodyState extends State<_DesktopHomeBody> {
+  /// 当前选中的导航索引;默认停留在「监视器」页。
+  int _selectedIndex = 0;
+
+  /// 当前平台可用的导航条目,顺序与详情面板的 IndexedStack 子项一致。
+  List<_DesktopNavEntry> _entries() {
+    final vm = widget.viewModel;
+    final showDisplayPanel =
+        vm.supportsDesktopOverlay ||
+        vm.supportsMenubar ||
+        vm.supportsAndroidDisplay ||
+        vm.supportsObsOverlay;
+    return [
+      _DesktopNavEntry(
+        keyName: 'monitor',
+        icon: Icons.monitor_heart_outlined,
+        label: '监视器',
+        pane: _MonitorPane(viewModel: vm),
+      ),
+      if (vm.supportsScenario)
+        _DesktopNavEntry(
+          keyName: 'scenario',
+          icon: Icons.speed_outlined,
+          label: '模拟场景',
+          pane: _ScenarioPane(viewModel: vm),
+        ),
+      if (showDisplayPanel)
+        _DesktopNavEntry(
+          keyName: 'display',
+          icon: Icons.devices_outlined,
+          label: '显示端',
+          pane: _DisplayPane(viewModel: vm),
+        ),
+      if (vm.supportsDesktopOverlay || vm.supportsAndroidDisplay)
+        _DesktopNavEntry(
+          keyName: 'style',
+          icon: Icons.tune_outlined,
+          label: '悬浮窗样式',
+          pane: _StylePane(viewModel: vm),
+        ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = _entries();
+    if (_selectedIndex >= entries.length) {
+      _selectedIndex = 0;
+    }
+    return Scaffold(
+      key: const Key('home_desktop_layout'),
+      body: Column(
+        children: [
+          _DesktopHeader(viewModel: widget.viewModel),
+          const Divider(height: 1),
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _NavRail(
+                  entries: entries,
+                  selectedIndex: _selectedIndex,
+                  onSelected: (index) {
+                    setState(() => _selectedIndex = index);
+                  },
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: [
+                      for (final entry in entries)
+                        KeyedSubtree(
+                          key: Key('desktop_pane_${entry.keyName}'),
+                          child: entry.pane,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 桌面导航条目:图标 + 标签 + 对应详情面板。
+class _DesktopNavEntry {
+  const _DesktopNavEntry({
+    required this.keyName,
+    required this.icon,
+    required this.label,
+    required this.pane,
+  });
+
+  /// 生成测试用 Key 使用的英文标识。
+  final String keyName;
+
+  final IconData icon;
+
+  final String label;
+
+  final Widget pane;
+}
+
+/// 桌面左侧导航栏:设置应用式的分类切换。
+class _NavRail extends StatelessWidget {
+  const _NavRail({
+    required this.entries,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<_DesktopNavEntry> entries;
+
+  final int selectedIndex;
+
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      key: const Key('desktop_nav_rail'),
+      width: desktopNavRailWidth,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var i = 0; i < entries.length; i++)
+              _NavRailItem(
+                entry: entries[i],
+                selected: i == selectedIndex,
+                onTap: () => onSelected(i),
+              ),
+            const Spacer(),
+            _footnote(context),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 导航栏条目:选中态用 secondaryContainer 底色 + 加粗标签。
+class _NavRailItem extends StatelessWidget {
+  const _NavRailItem({
+    required this.entry,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _DesktopNavEntry entry;
+
+  final bool selected;
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final foreground = selected
+        ? scheme.onSecondaryContainer
+        : scheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xs),
+      child: Material(
+        color: selected ? scheme.secondaryContainer : Colors.transparent,
+        borderRadius: AppRadius.controlBorder,
+        child: InkWell(
+          key: Key('desktop_nav_${entry.keyName}'),
+          borderRadius: AppRadius.controlBorder,
+          onTap: onTap,
+          child: SizedBox(
+            height: 44,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: Row(
+                children: [
+                  Icon(entry.icon, size: 20, color: foreground),
+                  const SizedBox(width: AppSpacing.md),
                   Text(
-                    '当前使用模拟数据源,支持低 / 中 / 高心率场景;小米手环蓝牙广播连接将在后续版本提供。',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface
-                          .withValues(alpha: 0.5),
+                    entry.label,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: foreground,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -66,801 +375,287 @@ class HomeView extends StatelessWidget {
   }
 }
 
-/// 连接状态区:红心、bpm、状态徽标与连接按钮。
-class _ConnectionSection extends StatelessWidget {
-  const _ConnectionSection({required this.viewModel});
+/// 「监视器」详情页:居中连接区(红心 + bpm + 状态胶囊 + 连接按钮)。
+class _MonitorPane extends StatelessWidget {
+  const _MonitorPane({required this.viewModel});
 
   final HomeViewModel viewModel;
 
-  String get _statusLabel {
-    return switch (viewModel.connection) {
-      HeartRateConnection.connected => '已连接(模拟)',
-      HeartRateConnection.connecting => '正在连接…',
-      HeartRateConnection.disconnected => '未连接',
-    };
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxl),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: ConnectionSection(viewModel: viewModel),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
+}
 
-  Color _statusColor(ColorScheme scheme) {
-    return switch (viewModel.connection) {
-      HeartRateConnection.connected => Colors.green.shade600,
-      HeartRateConnection.connecting => Colors.orange.shade600,
-      HeartRateConnection.disconnected => scheme.outline,
-    };
+/// 「模拟场景」详情页。
+class _ScenarioPane extends StatelessWidget {
+  const _ScenarioPane({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: _panePadding,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: desktopPaneMaxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _paneHeader(context, '模拟心率场景', '切换模拟数据源的目标心率区间'),
+              const SizedBox(height: AppSpacing.lg),
+              ScenarioSection(viewModel: viewModel),
+            ],
+          ),
+        ),
+      ),
+    );
   }
+}
+
+/// 「显示端」详情页。
+class _DisplayPane extends StatelessWidget {
+  const _DisplayPane({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: _panePadding,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: desktopPaneMaxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _paneHeader(context, '显示端', '选择心率在哪些位置显示'),
+              const SizedBox(height: AppSpacing.lg),
+              DisplayTogglesSection(viewModel: viewModel),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 「悬浮窗样式」详情页:页头 + 预览/分组控件区(高度受限,内部滚动)。
+class _StylePane extends StatelessWidget {
+  const _StylePane({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _panePadding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _paneHeader(context, '悬浮窗样式', '更改实时生效并自动保存(需打开显示端开关查看)'),
+          const SizedBox(height: AppSpacing.lg),
+          Expanded(child: OverlayStylePane(viewModel: viewModel)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 桌面顶部栏:隐藏原生标题栏后承担窗口拖拽、双击最大化 / 还原。
+///
+/// - macOS:系统在顶部约 28px 的透明标题栏区保留红绿灯,该区域由
+///   系统处理拖拽且 Flutter 控件收不到点击,内容行整体下移至其下方,
+///   因此横向无需再避让,应用名称可靠左显示;
+/// - Windows:无系统标题栏,右上角自绘最小化 / 最大化 / 关闭按钮,
+///   内容行为其预留右侧宽度。
+class _DesktopHeader extends StatelessWidget {
+  const _DesktopHeader({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  /// macOS 透明标题栏(红绿灯)占用的顶部高度,该区域内不可交互。
+  static const double _macosTitleBarInset = 28;
+
+  /// 顶部栏内容行高度(以行内最高控件为准)。
+  static const double _contentHeight = 40;
+
+  /// Windows 自绘窗口按钮(含留白)占据的右侧宽度。
+  static const double _windowsCaptionReserve = 146;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final connected = viewModel.connection == HeartRateConnection.connected;
-    return Column(
+    final isMacos = Platform.isMacOS;
+    final contentRow = Row(
       children: [
-        HeartbeatHeart(size: 180, bpm: connected ? viewModel.bpm : null),
-        const SizedBox(height: 16),
-        BpmDisplay(
-          bpm: connected ? viewModel.bpm : null,
-          numberStyle: Theme.of(context).textTheme.displaySmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            fontFeatures: [const FontFeature.tabularFigures()],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Chip(
-          avatar: CircleAvatar(
-            radius: 5,
-            backgroundColor: _statusColor(scheme),
-          ),
-          label: Text(_statusLabel),
-          visualDensity: VisualDensity.compact,
-        ),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: viewModel.canConnect
-              ? () => viewModel.connect()
-              : () => viewModel.disconnect(),
-          icon: Icon(
-            viewModel.canConnect
-                ? Icons.monitor_heart_outlined
-                : Icons.link_off,
-          ),
-          label: Text(viewModel.canConnect ? '连接手环(模拟)' : '断开连接'),
-        ),
-      ],
-    );
-  }
-}
-
-/// 模拟心率场景区:低 / 中 / 高三档切换。
-class _ScenarioSection extends StatelessWidget {
-  const _ScenarioSection({required this.viewModel});
-
-  final HomeViewModel viewModel;
-
-  String _scenarioLabel(HeartRateScenario scenario) {
-    return switch (scenario) {
-      HeartRateScenario.low => '低',
-      HeartRateScenario.medium => '中',
-      HeartRateScenario.high => '高',
-    };
-  }
-
-  String _scenarioDescription(HeartRateScenario scenario) {
-    return switch (scenario) {
-      HeartRateScenario.low =>
-        '静息 / 睡眠,${scenario.minBpm}–${scenario.maxBpm} bpm',
-      HeartRateScenario.medium =>
-        '日常活动,${scenario.minBpm}–${scenario.maxBpm} bpm',
-      HeartRateScenario.high =>
-        '运动状态,${scenario.minBpm}–${scenario.maxBpm} bpm',
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final scenario = viewModel.scenario;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.speed_outlined,
-              size: 18,
-              color: scheme.onSurface.withValues(alpha: 0.7),
-            ),
-            const SizedBox(width: 8),
-            Text('模拟心率场景', style: Theme.of(context).textTheme.titleMedium),
-          ],
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<HeartRateScenario>(
-            segments: [
-              for (final s in HeartRateScenario.values)
-                ButtonSegment(value: s, label: Text(_scenarioLabel(s))),
-            ],
-            selected: {scenario},
-            onSelectionChanged: (selection) =>
-                viewModel.setScenario(selection.first),
-          ),
-        ),
-        const SizedBox(height: 8),
+        Icon(Icons.favorite, size: 22, color: scheme.primary),
+        const SizedBox(width: AppSpacing.sm),
         Text(
-          _scenarioDescription(scenario),
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: scheme.onSurface.withValues(alpha: 0.6)),
+          'PulseSight',
+          style: Theme.of(context).textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
+        const Spacer(),
+        // 状态胶囊不参与指针事件,使空白处拖拽可从其上发起。
+        IgnorePointer(
+          child: StatusPill(
+            color: connectionStatusColor(viewModel.connection, scheme),
+            label: connectionStatusLabel(viewModel.connection),
+            detail: connected ? '${viewModel.bpm ?? '--'} bpm' : null,
+          ),
+        ),
+        const SizedBox(width: AppSpacing.sm),
+        _ThemeModeButton(viewModel: viewModel),
+        if (Platform.isWindows) const SizedBox(width: _windowsCaptionReserve),
       ],
     );
-  }
-}
-
-/// 显示端开关区:按平台能力渲染对应开关。
-class _DisplayTogglesSection extends StatelessWidget {
-  const _DisplayTogglesSection({required this.viewModel});
-
-  final HomeViewModel viewModel;
-
-  @override
-  Widget build(BuildContext context) {
-    final tiles = <Widget>[
-      if (viewModel.supportsDesktopOverlay) ...[
-        SwitchListTile(
-          secondary: const Icon(Icons.open_with),
-          title: const Text('桌面悬浮窗'),
-          subtitle: const Text('在桌面悬浮显示实时心率,关闭穿透后可拖动'),
-          value: viewModel.desktopOverlayEnabled,
-          onChanged: (value) => viewModel.setDesktopOverlayEnabled(value),
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.mouse),
-          title: const Text('鼠标穿透'),
-          subtitle: const Text('开启后点击会穿透悬浮窗作用于下层内容'),
-          value: viewModel.mousePassthroughEnabled,
-          onChanged: viewModel.desktopOverlayEnabled
-              ? (value) => viewModel.setMousePassthroughEnabled(value)
-              : null,
-        ),
-      ],
-      if (viewModel.supportsMenubar)
-        SwitchListTile(
-          secondary: const Icon(Icons.favorite_border),
-          title: const Text('菜单栏心率'),
-          subtitle: const Text('在系统菜单栏实时显示当前心率'),
-          value: viewModel.menubarEnabled,
-          onChanged: (value) => viewModel.setMenubarEnabled(value),
-        ),
-      if (viewModel.supportsAndroidDisplay) ...[
-        SwitchListTile(
-          secondary: const Icon(Icons.picture_in_picture_alt),
-          title: const Text('心率悬浮窗'),
-          subtitle: const Text('在其他应用上层悬浮显示实时心率,可拖动'),
-          value: viewModel.androidOverlayEnabled,
-          onChanged: (value) async {
-            final ok = await viewModel.setAndroidOverlayEnabled(value);
-            if (!ok && context.mounted) {
-              _showSnackBar(context, '未授予悬浮窗权限,请在系统设置中开启');
-            }
-          },
-        ),
-        SwitchListTile(
-          secondary: const Icon(Icons.notifications_active_outlined),
-          title: const Text('状态栏心率'),
-          subtitle: const Text('通过持续通知展示当前心率'),
-          value: viewModel.statusBarEnabled,
-          onChanged: (value) async {
-            final ok = await viewModel.setStatusBarEnabled(value);
-            if (!ok && context.mounted) {
-              _showSnackBar(context, '未授予通知权限,无法在状态栏展示');
-            }
-          },
-        ),
-      ],
-      if (viewModel.supportsObsOverlay)
-        SwitchListTile(
-          secondary: const Icon(Icons.podcasts),
-          title: const Text('OBS 浏览器源'),
-          subtitle: viewModel.obsOverlayEnabled
-              ? _ObsUrlRow(url: viewModel.obsOverlayUrl)
-              : const Text('在 OBS 中添加浏览器源即可录制显示,桌面不显示窗口'),
-          value: viewModel.obsOverlayEnabled,
-          onChanged: (value) async {
-            final ok = await viewModel.setObsOverlayEnabled(value);
-            if (!ok && context.mounted) {
-              _showSnackBar(context, '本地服务启动失败,端口可能被占用');
-            }
-          },
-        ),
-    ];
-    return Column(children: tiles);
-  }
-
-  void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
-}
-
-/// OBS 浏览器源地址行:URL + 复制按钮。
-class _ObsUrlRow extends StatelessWidget {
-  const _ObsUrlRow({required this.url});
-
-  final String url;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Flexible(
-          child: Text(
-            url,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: scheme.primary),
+    return SizedBox(
+      height: isMacos ? _macosTitleBarInset + _contentHeight : _contentHeight,
+      child: Stack(
+        children: [
+          // 底层:整条顶部栏作为窗口拖拽区(含双击最大化 / 还原)。
+          // 垫底而非包裹按钮,避免双击识别器拖慢上层按钮的单击响应。
+          Positioned.fill(
+            child: DragToMoveArea(child: const SizedBox.expand()),
           ),
-        ),
-        const SizedBox(width: 4),
-        Tooltip(
-          message: '复制浏览器源地址',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(4),
-            onTap: () async {
-              await Clipboard.setData(ClipboardData(text: url));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(SnackBar(content: Text('已复制浏览器源地址:$url')));
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Icon(Icons.copy, size: 16, color: scheme.primary),
+          // 内容行:macOS 下移至系统红绿灯区之下,应用名称可靠左显示。
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              isMacos ? _macosTitleBarInset : AppSpacing.xs,
+              AppSpacing.md,
+              0,
             ),
+            child: contentRow,
           ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 悬浮窗样式设置区:实时预览 + 心形大小/数字大小/位置/心电图样式/间距调节。
-class _OverlayStyleSection extends StatelessWidget {
-  const _OverlayStyleSection({required this.viewModel});
-
-  final HomeViewModel viewModel;
-
-  static const _bpmPositionLabels = <BpmPosition, String>{
-    BpmPosition.top: '上',
-    BpmPosition.bottom: '下',
-    BpmPosition.left: '左',
-    BpmPosition.right: '右',
-    BpmPosition.hidden: '隐藏',
-  };
-
-  static const _ecgStyleLabels = <EcgStyle, String>{
-    EcgStyle.none: '关',
-    EcgStyle.flat: '直线',
-    EcgStyle.single: '单峰',
-    EcgStyle.classic: '经典',
-    EcgStyle.digits: '数字',
-  };
-
-  /// 背景板预设色板(均为深色系,保证浅色文字可读)。
-  static const List<Color> _backgroundColorSwatches = [
-    Color(0xFF17181C), // 深灰(默认)
-    Color(0xFF000000), // 黑
-    Color(0xFF1A237E), // 深蓝
-    Color(0xFF4A148C), // 深紫
-    Color(0xFFB71C1C), // 深红
-    Color(0xFF1B5E20), // 深绿
-    Color(0xFF3E2723), // 深棕
-    Color(0xFF37474F), // 蓝灰
-  ];
-
-  /// 折线图预设色板(心率红默认,浅色系备选)。
-  static const List<Color> _chartLineColorSwatches = [
-    Color(0xFFE23A3A), // 心率红(默认)
-    Color(0xFFFFFFFF), // 白
-    Color(0xFFFFD54F), // 金
-    Color(0xFF4DD0E1), // 青
-    Color(0xFFF48FB1), // 粉
-    Color(0xFFA5D6A7), // 浅绿
-    Color(0xFFB0BEC5), // 浅灰
-    Color(0xFF212121), // 黑
-  ];
-
-  /// 心形预设色板。
-  static const List<Color> _heartColorSwatches = [
-    Color(0xFFE23A3A), // 红(默认)
-    Color(0xFFFF6B81), // 粉红
-    Color(0xFFFF7043), // 橙
-    Color(0xFFAB47BC), // 紫
-    Color(0xFF29B6F6), // 蓝
-    Color(0xFF66BB6A), // 绿
-    Color(0xFFFFC107), // 金
-    Color(0xFF212121), // 黑
-  ];
-
-  /// 心电图线/文字预设色板(浅色为主,深底上清晰)。
-  static const List<Color> _lineColorSwatches = [
-    Color(0xFFFFFFFF), // 白(默认)
-    Color(0xFFFFD54F), // 金
-    Color(0xFF4DD0E1), // 青
-    Color(0xFFF48FB1), // 粉
-    Color(0xFFA5D6A7), // 浅绿
-    Color(0xFFFF5252), // 红
-    Color(0xFFB0BEC5), // 浅灰
-    Color(0xFF212121), // 黑
-  ];
-
-  /// 将字重数值映射到最接近的字重分段档位(300/400/600/800/900)。
-  static double _fontWeightSegment(double weight) {
-    const stops = [300.0, 400.0, 600.0, 800.0, 900.0];
-    var nearest = stops.first;
-    for (final stop in stops.skip(1)) {
-      if ((weight - stop).abs() < (weight - nearest).abs()) {
-        nearest = stop;
-      }
-    }
-    return nearest;
-  }
-
-  /// 生成一行颜色色板 + 自定义选色入口。
-  Widget _colorSwatchRow({
-    required BuildContext context,
-    required String label,
-    required Color current,
-    required List<Color> presets,
-    required ValueChanged<Color> onPicked,
-  }) {
-    final isCustom = !presets.contains(current);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
-        const SizedBox(height: 6),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            for (final color in presets)
-              GestureDetector(
-                onTap: () => onPicked(color),
-                child: Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      width: current == color ? 3 : 1,
-                      color: current == color
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurface
-                                .withValues(alpha: 0.25),
-                    ),
-                  ),
-                ),
-              ),
-            // 自定义颜色:打开调色盘对话框;当前为自定义色时高亮。
-            GestureDetector(
-              onTap: () async {
-                final picked = await _pickColor(context, current, label);
-                if (picked != null) onPicked(picked);
-              },
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    width: isCustom ? 3 : 1,
-                    color: isCustom
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.onSurface
-                              .withValues(alpha: 0.25),
-                  ),
-                ),
-                child: Icon(
-                  Icons.add,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurface
-                      .withValues(alpha: 0.7),
-                ),
-              ),
+          if (Platform.isWindows)
+            const Align(
+              alignment: Alignment.topRight,
+              child: _WindowsCaptionButtons(),
             ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  /// 打开自定义颜色选择器对话框;确定后返回所选颜色。
-  Future<Color?> _pickColor(
-    BuildContext context,
-    Color initial,
-    String title,
-  ) async {
-    Color temp = initial;
-    return showDialog<Color>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('自定义$title'),
-        content: SingleChildScrollView(
-          // ColorPicker 内部的格式下拉按钮需要 Material 祖先。
-          child: Material(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: ColorPicker(
-                pickerColor: temp,
-                onColorChanged: (color) => temp = color,
-                paletteType: PaletteType.hueWheel,
-                pickerAreaHeightPercent: 0.75,
-                displayThumbColor: true,
-                enableAlpha: false, // 透明度由独立滑块控制
-                labelTypes: const [], // 禁用 rgb/hsv/hsl 标签行(其下拉按钮在桌面端触发 LookupBoundary 查找异常)
-              ),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, temp),
-            child: const Text('确定'),
-          ),
         ],
       ),
     );
   }
+}
+
+/// Windows 自绘窗口控制按钮:最小化 / 最大化(还原)/ 关闭。
+///
+/// 贴右上角排布,最大化状态经 [WindowListener] 与窗口事件保持同步。
+class _WindowsCaptionButtons extends StatefulWidget {
+  const _WindowsCaptionButtons();
+
+  @override
+  State<_WindowsCaptionButtons> createState() => _WindowsCaptionButtonsState();
+}
+
+class _WindowsCaptionButtonsState extends State<_WindowsCaptionButtons>
+    with WindowListener {
+  bool _maximized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    windowManager.isMaximized().then((value) {
+      if (mounted && value != _maximized) {
+        setState(() => _maximized = value);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  @override
+  void onWindowMaximize() {
+    setState(() => _maximized = true);
+  }
+
+  @override
+  void onWindowUnmaximize() {
+    setState(() => _maximized = false);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: viewModel,
-      builder: (context, _) {
-        final style = viewModel.overlayStyle;
-        final connected = viewModel.connection == HeartRateConnection.connected;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
-            Text('悬浮窗样式', style: Theme.of(context).textTheme.titleMedium),
-            Text(
-              '更改实时生效并自动保存(需打开上方悬浮窗开关查看)',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Theme.of(context).colorScheme.onSurface
-                    .withValues(alpha: 0.5),
+    final brightness = Theme.of(context).brightness;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        WindowCaptionButton.minimize(
+          brightness: brightness,
+          onPressed: windowManager.minimize,
+        ),
+        _maximized
+            ? WindowCaptionButton.unmaximize(
+                brightness: brightness,
+                onPressed: windowManager.unmaximize,
+              )
+            : WindowCaptionButton.maximize(
+                brightness: brightness,
+                onPressed: windowManager.maximize,
               ),
-            ),
-            const SizedBox(height: 12),
-            // 实时预览:按当前样式渲染悬浮窗内容。
-            Center(
-              child: Container(
-                width: 170,
-                height: 210,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF17181C),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Theme.of(context).colorScheme.onSurface
-                        .withValues(alpha: 0.2),
-                  ),
-                ),
-                child: OverlayView(
-                  bpm: connected ? viewModel.bpm : null,
-                  connected: connected,
-                  style: style,
-                  history: viewModel.heartRateHistory,
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Center(
-              child: Text(
-                '预览(实际悬浮窗为透明背景)',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface
-                      .withValues(alpha: 0.5),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            _StyleSlider(
-              label: '心形大小',
-              value: style.heartSize,
-              min: 36,
-              max: 96,
-              divisions: 15,
-              onChanged: viewModel.setOverlayHeartSize,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '数字大小',
-              value: style.bpmFontSize,
-              min: 12,
-              max: 36,
-              divisions: 12,
-              onChanged: viewModel.setOverlayBpmFontSize,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '间距',
-              value: style.gap,
-              min: 0,
-              max: 24,
-              divisions: 12,
-              onChanged: viewModel.setOverlayGap,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '心率透明度',
-              value: style.opacity,
-              min: 0.1,
-              max: 1.0,
-              divisions: 9,
-              labelBuilder: (v) => '${(v * 100).round()}%',
-              onChanged: viewModel.setOverlayOpacity,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '背景板透明度',
-              value: style.backgroundOpacity,
-              min: 0,
-              max: 1.0,
-              divisions: 10,
-              labelBuilder: (v) => v <= 0 ? '无' : '${(v * 100).round()}%',
-              onChanged: viewModel.setOverlayBackgroundOpacity,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '背景板宽度',
-              value: style.backgroundWidth,
-              min: 100,
-              max: 240,
-              divisions: 14,
-              onChanged: viewModel.setOverlayBackgroundWidth,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '背景板高度',
-              value: style.backgroundHeight,
-              min: 120,
-              max: 280,
-              divisions: 16,
-              onChanged: viewModel.setOverlayBackgroundHeight,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('心形律动'),
-              subtitle: const Text('关闭后心形静止(心电图动画照常)'),
-              value: style.heartPulseEnabled,
-              onChanged: viewModel.setOverlayHeartPulseEnabled,
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('文字律动'),
-              subtitle: const Text('关闭后心率数字静止'),
-              value: style.textPulseEnabled,
-              onChanged: viewModel.setOverlayTextPulseEnabled,
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('心率折线图'),
-              subtitle: const Text('在悬浮窗底部绘制近期心率波动曲线'),
-              value: style.showChart,
-              onChanged: viewModel.setOverlayShowChart,
-            ),
-            _StyleSlider(
-              label: '辉光透明度',
-              value: style.glowOpacity,
-              min: 0,
-              max: 1.0,
-              divisions: 10,
-              labelBuilder: (v) => v <= 0 ? '无' : '${(v * 100).round()}%',
-              onChanged: viewModel.setOverlayGlowOpacity,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '辉光半径',
-              value: style.glowRadius,
-              min: 0,
-              max: 3.0,
-              divisions: 12,
-              labelBuilder: (v) => v <= 0 ? '无' : '${(v * 100).round()}%',
-              onChanged: viewModel.setOverlayGlowRadius,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            const SizedBox(height: 4),
-            _colorSwatchRow(
-              context: context,
-              label: '背景板颜色',
-              current: style.backgroundColor,
-              presets: _backgroundColorSwatches,
-              onPicked: viewModel.setOverlayBackgroundColor,
-            ),
-            _colorSwatchRow(
-              context: context,
-              label: '折线图颜色',
-              current: style.chartLineColor,
-              presets: _chartLineColorSwatches,
-              onPicked: viewModel.setOverlayChartLineColor,
-            ),
-            _StyleSlider(
-              label: '采集时长',
-              value: style.chartSeconds,
-              min: 10,
-              max: 120,
-              divisions: 11,
-              labelBuilder: (v) => '${v.round()} 秒',
-              onChanged: viewModel.setOverlayChartSeconds,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '折线图高度',
-              value: style.chartHeight,
-              min: 40,
-              max: 160,
-              divisions: 12,
-              onChanged: viewModel.setOverlayChartHeight,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _StyleSlider(
-              label: '图表间距',
-              value: style.chartSpacing,
-              min: 0,
-              max: 24,
-              divisions: 12,
-              onChanged: viewModel.setOverlayChartSpacing,
-              onChangeEnd: (_) => viewModel.persistOverlayStyle(),
-            ),
-            _colorSwatchRow(
-              context: context,
-              label: '心脏颜色',
-              current: style.heartColor,
-              presets: _heartColorSwatches,
-              onPicked: viewModel.setOverlayHeartColor,
-            ),
-            _colorSwatchRow(
-              context: context,
-              label: '心电图颜色',
-              current: style.ecgColor,
-              presets: _lineColorSwatches,
-              onPicked: viewModel.setOverlayEcgColor,
-            ),
-            _colorSwatchRow(
-              context: context,
-              label: '文字颜色',
-              current: style.textColor,
-              presets: _lineColorSwatches,
-              onPicked: viewModel.setOverlayTextColor,
-            ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: const Text('显示 bpm 标签'),
-              subtitle: const Text('心率数字旁的 “bpm” 小字'),
-              value: style.showBpmLabel,
-              onChanged: viewModel.setOverlayShowBpmLabel,
-            ),
-            const SizedBox(height: 4),
-            Text('字重', style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: 6),
-            SegmentedButton<double>(
-              segments: const [
-                ButtonSegment(value: 300, label: Text('细')),
-                ButtonSegment(value: 400, label: Text('常规')),
-                ButtonSegment(value: 600, label: Text('中粗')),
-                ButtonSegment(value: 800, label: Text('粗')),
-                ButtonSegment(value: 900, label: Text('特粗')),
-              ],
-              selected: {_fontWeightSegment(style.textWeight)},
-              onSelectionChanged: (selection) =>
-                  viewModel.setOverlayTextWeight(selection.first),
-            ),
-            const SizedBox(height: 12),
-            Text('字体', style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: 6),
-            DropdownButton<String?>(
-              value: style.textFontFamily,
-              isExpanded: true,
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('默认(系统)'),
-                ),
-                ...viewModel.overlayFontFamilies.map(
-                  (family) => DropdownMenuItem<String?>(
-                    value: family,
-                    child: Text(family, overflow: TextOverflow.ellipsis),
-                  ),
-                ),
-              ],
-              onChanged: (family) => viewModel.setOverlayTextFontFamily(family),
-            ),
-            const SizedBox(height: 4),
-            Text('数字位置', style: Theme.of(context).textTheme.labelLarge),
-            SegmentedButton<BpmPosition>(
-              segments: _bpmPositionLabels.entries
-                  .map((e) => ButtonSegment(value: e.key, label: Text(e.value)))
-                  .toList(),
-              selected: {style.bpmPosition},
-              onSelectionChanged: (selection) {
-                viewModel.setOverlayBpmPosition(selection.first);
-              },
-            ),
-            const SizedBox(height: 12),
-            Text('心电图样式', style: Theme.of(context).textTheme.labelLarge),
-            SegmentedButton<EcgStyle>(
-              segments: _ecgStyleLabels.entries
-                  .map((e) => ButtonSegment(value: e.key, label: Text(e.value)))
-                  .toList(),
-              selected: {style.ecgStyle},
-              onSelectionChanged: (selection) {
-                viewModel.setOverlayEcgStyle(selection.first);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        );
-      },
+        WindowCaptionButton.close(
+          brightness: brightness,
+          onPressed: windowManager.close,
+        ),
+      ],
     );
   }
 }
 
-/// 带标签的样式滑块。
-class _StyleSlider extends StatelessWidget {
-  const _StyleSlider({
-    required this.label,
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.onChanged,
-    required this.onChangeEnd,
-    this.divisions,
-    this.labelBuilder,
-  });
+/// 主题模式切换按钮:跟随系统 → 浅色 → 深色循环。
+class _ThemeModeButton extends StatelessWidget {
+  const _ThemeModeButton({required this.viewModel});
 
-  final String label;
-  final double value;
-  final double min;
-  final double max;
-  final ValueChanged<double> onChanged;
-  final ValueChanged<double> onChangeEnd;
-
-  /// 刻度数;null 时由区间长度推导(仅适用于整数区间)。
-  final int? divisions;
-
-  /// 拖动时显示的数值文案;缺省为四舍五入整数。
-  final String Function(double value)? labelBuilder;
+  final HomeViewModel viewModel;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SizedBox(width: 88, child: Text(label)),
-        Expanded(
-          child: Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            divisions: divisions ?? (max - min).round(),
-            label: labelBuilder?.call(value) ?? value.round().toString(),
-            onChanged: onChanged,
-            onChangeEnd: onChangeEnd,
-          ),
-        ),
-      ],
+    final mode = viewModel.themeMode;
+    return IconButton(
+      key: const Key('theme_mode_button'),
+      visualDensity: VisualDensity.compact,
+      tooltip: switch (mode) {
+        ThemeMode.system => '主题:跟随系统',
+        ThemeMode.light => '主题:浅色',
+        ThemeMode.dark => '主题:深色',
+      },
+      icon: Icon(switch (mode) {
+        ThemeMode.system => Icons.brightness_auto_outlined,
+        ThemeMode.light => Icons.light_mode_outlined,
+        ThemeMode.dark => Icons.dark_mode_outlined,
+      }),
+      onPressed: () {
+        final next = switch (viewModel.themeMode) {
+          ThemeMode.system => ThemeMode.light,
+          ThemeMode.light => ThemeMode.dark,
+          ThemeMode.dark => ThemeMode.system,
+        };
+        viewModel.setThemeMode(next);
+      },
     );
   }
 }

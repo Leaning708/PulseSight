@@ -16,6 +16,9 @@ abstract final class SettingsKeys {
   /// 模拟心率场景(枚举名:low / medium / high)。
   static const simulatedScenario = 'simulated.scenario';
 
+  /// 界面主题模式(枚举名:system / light / dark)。
+  static const themeMode = 'app.theme_mode';
+
   /// OBS 浏览器源本地服务开关。
   static const obsOverlayEnabled = 'obs_overlay.enabled';
 
@@ -121,6 +124,7 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
   /// 已知键与其值类型的注册表,驱动 loadAll 的类型化读取。
   static const Map<String, String> _knownKeys = {
     SettingsKeys.simulatedScenario: 'string',
+    SettingsKeys.themeMode: 'string',
     SettingsKeys.obsOverlayEnabled: 'bool',
     SettingsKeys.desktopOverlayEnabled: 'bool',
     SettingsKeys.mousePassthroughEnabled: 'bool',

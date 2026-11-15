@@ -7,6 +7,7 @@
 | 文档 | 说明 | 状态 |
 | --- | --- | --- |
 | [architecture.md](architecture.md) | 架构设计:分层、数据流、悬浮窗样式系统、各平台显示端实现、已知平台陷阱、数据源替换点 | 已完成 |
+| [desktop-ui.md](desktop-ui.md) | 主界面 UI 设计:桌面仪表盘布局与断点、sections 组织、主题体系、暗色模式、主窗口配置 | 已完成 |
 | [development.md](development.md) | 开发指南:环境要求、常用命令、UI 自动化驱动、Android 模拟器工作流、样式系统扩展步骤 | 已完成 |
 | [troubleshooting.md](troubleshooting.md) | 排障手册:开发过程中实际踩过的坑(桌面透明、skipTaskbar accessory、LookupBoundary、CLT 版本、CocoaPods、Gradle 等)与已验证解法 | 已完成 |
 
