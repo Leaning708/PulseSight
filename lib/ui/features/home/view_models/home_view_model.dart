@@ -33,7 +33,8 @@ class HomeViewModel extends ChangeNotifier {
     this._appMenu,
     this._androidDisplay,
     this._obsOverlay,
-  });
+    FontListService? fontListService,
+  }) : _fontList = fontListService ?? FontListService();
 
   final HeartRateRepository _repository;
   final SettingsRepository _settings;
@@ -42,7 +43,7 @@ class HomeViewModel extends ChangeNotifier {
   final AppMenuDisplay? _appMenu;
   final AndroidDisplay? _androidDisplay;
   final ObsOverlayDisplay? _obsOverlay;
-  final FontListService _fontList = FontListService();
+  final FontListService _fontList;
 
   StreamSubscription<HeartRateReading>? _readingsSub;
   StreamSubscription<HeartRateConnection>? _connectionSub;
@@ -499,7 +500,12 @@ class HomeViewModel extends ChangeNotifier {
 
   /// 更新数字字体族并持久化;null 表示系统默认。
   void setOverlayTextFontFamily(String? family) {
-    _applyOverlayStyle(_overlayStyle.copyWith(textFontFamily: family));
+    _applyOverlayStyle(
+      _overlayStyle.copyWith(
+        textFontFamily: family,
+        clearTextFontFamily: family == null,
+      ),
+    );
     persistOverlayStyle();
   }
 

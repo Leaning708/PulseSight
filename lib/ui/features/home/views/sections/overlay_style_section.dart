@@ -495,6 +495,8 @@ class OverlayStyleControls extends StatelessWidget {
         DropdownButton<String?>(
           value: style.textFontFamily,
           isExpanded: true,
+          // Windows 字体族上百个,限制菜单高度避免全屏弹出。
+          menuMaxHeight: 400,
           items: [
             const DropdownMenuItem<String?>(value: null, child: Text('默认(系统)')),
             ...viewModel.overlayFontFamilies.map(

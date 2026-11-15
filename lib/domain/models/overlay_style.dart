@@ -20,8 +20,10 @@ enum BpmPosition {
   hidden;
 
   /// 从持久化的字符串还原;无法识别时回退为 [BpmPosition.bottom]。
-  static BpmPosition fromString(String? value) => BpmPosition.values
-      .firstWhere((v) => v.name == value, orElse: () => BpmPosition.bottom);
+  static BpmPosition fromString(String? value) => BpmPosition.values.firstWhere(
+    (v) => v.name == value,
+    orElse: () => BpmPosition.bottom,
+  );
 }
 
 /// 心形内部心电图线的样式。
@@ -42,8 +44,10 @@ enum EcgStyle {
   digits;
 
   /// 从持久化的字符串还原;无法识别时回退为 [EcgStyle.classic]。
-  static EcgStyle fromString(String? value) => EcgStyle.values
-      .firstWhere((v) => v.name == value, orElse: () => EcgStyle.classic);
+  static EcgStyle fromString(String? value) => EcgStyle.values.firstWhere(
+    (v) => v.name == value,
+    orElse: () => EcgStyle.classic,
+  );
 }
 
 /// 悬浮窗显示样式:心形大小、数字大小与位置、心电图样式、间距。
@@ -157,7 +161,8 @@ class OverlayStyle {
   final double chartSpacing;
 
   /// 按采集时长折算的历史采样点数上限(按 0.8s 采样间隔估算)。
-  int get chartSampleCount => ((chartSeconds * 1000) / 800).round().clamp(2, 1000);
+  int get chartSampleCount =>
+      ((chartSeconds * 1000) / 800).round().clamp(2, 1000);
 
   /// 背景板默认颜色(深灰)。
   static const Color defaultBackgroundColor = Color(0xFF17181C);
@@ -178,6 +183,9 @@ class OverlayStyle {
   static const OverlayStyle defaults = OverlayStyle();
 
   /// 复制并替换部分字段。
+  ///
+  /// [textFontFamily] 传 null 时保留原值(与其他可空字段一致);需要
+  /// 显式清空回"系统默认"时传 [clearTextFontFamily] 为 true。
   OverlayStyle copyWith({
     double? heartSize,
     double? bpmFontSize,
@@ -195,6 +203,7 @@ class OverlayStyle {
     bool? showBpmLabel,
     double? textWeight,
     String? textFontFamily,
+    bool clearTextFontFamily = false,
     bool? showChart,
     double? chartSeconds,
     Color? chartLineColor,
@@ -221,7 +230,9 @@ class OverlayStyle {
       ecgColor: ecgColor ?? this.ecgColor,
       showBpmLabel: showBpmLabel ?? this.showBpmLabel,
       textWeight: textWeight ?? this.textWeight,
-      textFontFamily: textFontFamily ?? this.textFontFamily,
+      textFontFamily: clearTextFontFamily
+          ? null
+          : (textFontFamily ?? this.textFontFamily),
       showChart: showChart ?? this.showChart,
       chartSeconds: chartSeconds ?? this.chartSeconds,
       chartLineColor: chartLineColor ?? this.chartLineColor,
@@ -236,32 +247,32 @@ class OverlayStyle {
 
   /// 序列化为可经平台通道传递的映射。
   Map<String, Object?> toJson() => {
-        'heartSize': heartSize,
-        'bpmFontSize': bpmFontSize,
-        'bpmPosition': bpmPosition.name,
-        'ecgStyle': ecgStyle.name,
-        'gap': gap,
-        'opacity': opacity,
-        'backgroundOpacity': backgroundOpacity,
-        'backgroundColor': backgroundColor.toARGB32(),
-        'backgroundWidth': backgroundWidth,
-        'backgroundHeight': backgroundHeight,
-        'textColor': textColor.toARGB32(),
-        'heartColor': heartColor.toARGB32(),
-        'ecgColor': ecgColor.toARGB32(),
-        'showBpmLabel': showBpmLabel,
-        'textWeight': textWeight,
-        'textFontFamily': textFontFamily,
-        'showChart': showChart,
-        'chartSeconds': chartSeconds,
-        'chartLineColor': chartLineColor.toARGB32(),
-        'chartHeight': chartHeight,
-        'chartSpacing': chartSpacing,
-        'heartPulseEnabled': heartPulseEnabled,
-        'textPulseEnabled': textPulseEnabled,
-        'glowRadius': glowRadius,
-        'glowOpacity': glowOpacity,
-      };
+    'heartSize': heartSize,
+    'bpmFontSize': bpmFontSize,
+    'bpmPosition': bpmPosition.name,
+    'ecgStyle': ecgStyle.name,
+    'gap': gap,
+    'opacity': opacity,
+    'backgroundOpacity': backgroundOpacity,
+    'backgroundColor': backgroundColor.toARGB32(),
+    'backgroundWidth': backgroundWidth,
+    'backgroundHeight': backgroundHeight,
+    'textColor': textColor.toARGB32(),
+    'heartColor': heartColor.toARGB32(),
+    'ecgColor': ecgColor.toARGB32(),
+    'showBpmLabel': showBpmLabel,
+    'textWeight': textWeight,
+    'textFontFamily': textFontFamily,
+    'showChart': showChart,
+    'chartSeconds': chartSeconds,
+    'chartLineColor': chartLineColor.toARGB32(),
+    'chartHeight': chartHeight,
+    'chartSpacing': chartSpacing,
+    'heartPulseEnabled': heartPulseEnabled,
+    'textPulseEnabled': textPulseEnabled,
+    'glowRadius': glowRadius,
+    'glowOpacity': glowOpacity,
+  };
 
   /// 从平台通道传来的映射还原;缺失或非法字段回退为默认值。
   factory OverlayStyle.fromJson(Map<dynamic, dynamic> json) {
@@ -285,7 +296,9 @@ class OverlayStyle {
           ? (json['backgroundOpacity'] as num).toDouble().clamp(0.0, 1.0)
           : 0.0,
       backgroundColor: colorFromJson(
-          json['backgroundColor'], defaultBackgroundColor),
+        json['backgroundColor'],
+        defaultBackgroundColor,
+      ),
       backgroundWidth: json['backgroundWidth'] is num
           ? (json['backgroundWidth'] as num).toDouble()
           : 130,
@@ -309,7 +322,9 @@ class OverlayStyle {
           ? (json['chartSeconds'] as num).toDouble().clamp(10.0, 120.0)
           : 30,
       chartLineColor: colorFromJson(
-          json['chartLineColor'], defaultChartLineColor),
+        json['chartLineColor'],
+        defaultChartLineColor,
+      ),
       chartHeight: json['chartHeight'] is num
           ? (json['chartHeight'] as num).toDouble().clamp(40.0, 160.0)
           : 84,
@@ -362,30 +377,30 @@ class OverlayStyle {
 
   @override
   int get hashCode => Object.hashAll(<Object?>[
-        heartSize,
-        bpmFontSize,
-        bpmPosition,
-        ecgStyle,
-        gap,
-        opacity,
-        backgroundOpacity,
-        backgroundColor,
-        backgroundWidth,
-        backgroundHeight,
-        textColor,
-        heartColor,
-        ecgColor,
-        showBpmLabel,
-        textWeight,
-        textFontFamily,
-        showChart,
-        chartSeconds,
-        chartLineColor,
-        chartHeight,
-        chartSpacing,
-        heartPulseEnabled,
-        textPulseEnabled,
-        glowRadius,
-        glowOpacity,
-      ]);
+    heartSize,
+    bpmFontSize,
+    bpmPosition,
+    ecgStyle,
+    gap,
+    opacity,
+    backgroundOpacity,
+    backgroundColor,
+    backgroundWidth,
+    backgroundHeight,
+    textColor,
+    heartColor,
+    ecgColor,
+    showBpmLabel,
+    textWeight,
+    textFontFamily,
+    showChart,
+    chartSeconds,
+    chartLineColor,
+    chartHeight,
+    chartSpacing,
+    heartPulseEnabled,
+    textPulseEnabled,
+    glowRadius,
+    glowOpacity,
+  ]);
 }

@@ -7,6 +7,7 @@ import 'package:pulse_sight/data/services/heart_rate_scenario_source.dart';
 import 'package:pulse_sight/data/services/heart_rate_source.dart';
 import 'package:pulse_sight/data/services/platform/android_display_service.dart';
 import 'package:pulse_sight/data/services/platform/desktop_overlay_service.dart';
+import 'package:pulse_sight/data/services/platform/font_list_service.dart';
 import 'package:pulse_sight/data/services/platform/macos_app_menu_service.dart';
 import 'package:pulse_sight/data/services/platform/macos_menubar_service.dart';
 import 'package:pulse_sight/data/services/platform/obs_overlay_service.dart';
@@ -453,6 +454,39 @@ void main() {
       expect(viewModel.overlayStyle.bpmPosition, BpmPosition.right);
       expect(viewModel.overlayStyle.ecgStyle, EcgStyle.none);
       expect(viewModel.overlayStyle.gap, 10);
+    });
+
+    test('init 加载系统字体列表并暴露给字体下拉', () async {
+      final fontList = FontListService(
+        loader: () async => ['Microsoft YaHei', 'Arial'],
+      );
+      final vm = HomeViewModel(
+        repository: repository,
+        settings: settings,
+        fontListService: fontList,
+      );
+
+      await vm.init();
+      await fontList.ready;
+
+      expect(vm.overlayFontFamilies, ['Arial', 'Microsoft YaHei']);
+      vm.dispose();
+    });
+
+    test('选择字体后可切回默认(系统)', () async {
+      await viewModel.init();
+
+      viewModel.setOverlayTextFontFamily('Microsoft YaHei');
+      expect(viewModel.overlayStyle.textFontFamily, 'Microsoft YaHei');
+
+      viewModel.setOverlayTextFontFamily(null);
+      await pumpEventQueue();
+      expect(viewModel.overlayStyle.textFontFamily, isNull);
+      expect(
+        settings.store[SettingsKeys.overlayTextFontFamily],
+        isNull,
+        reason: '切回系统默认后持久化值应被移除',
+      );
     });
   });
 

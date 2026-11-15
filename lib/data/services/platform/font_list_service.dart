@@ -5,12 +5,13 @@ import 'package:flutter/services.dart';
 
 /// 系统已安装字体枚举服务。
 ///
-/// macOS 经原生通道 `pulsesight/fonts` 枚举 CoreText 已注册字体族;
-/// 其他平台暂不支持(返回空列表,界面仅显示“默认”)。
+/// macOS / Windows 经原生通道 `pulsesight/fonts` 枚举系统字体族
+/// (CoreText / DirectWrite);其他平台暂不支持(返回空列表,
+/// 界面仅显示“默认”)。
 class FontListService {
   /// 创建服务;测试可注入 [loader] 替代真实通道调用。
   FontListService({Future<List<String>> Function()? loader})
-      : _customLoader = loader;
+    : _customLoader = loader;
 
   final Future<List<String>> Function()? _customLoader;
 
@@ -35,14 +36,20 @@ class FontListService {
     _loaded = true;
     try {
       if (_customLoader != null) {
-        _cache = await _customLoader();
-      } else if (Platform.isMacOS) {
+        _cache = _normalize(await _customLoader());
+      } else if (Platform.isMacOS || Platform.isWindows) {
         final families = await _channel.invokeMethod<List<Object?>>('list');
-        _cache = (families ?? const []).whereType<String>().toList();
+        _cache = _normalize(families ?? const []);
       }
     } catch (_) {
       _cache = const [];
     }
     _ready.complete();
+  }
+
+  /// 去重并按大小写不敏感排序,统一各端返回顺序。
+  static List<String> _normalize(Iterable<Object?> families) {
+    return families.whereType<String>().toSet().toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
   }
 }

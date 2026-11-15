@@ -5,6 +5,7 @@
 #include "flutter/generated_plugin_registrant.h"
 #include "desktop_multi_window/desktop_multi_window_plugin.h"
 #include "overlay_window_support.h"
+#include "system_font_list.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -42,6 +43,8 @@ bool FlutterWindow::OnCreate() {
                                    flutter_view_controller->view()
                                        ->GetNativeWindow());
   });
+  // 系统字体枚举通道(悬浮窗样式“字体”下拉),与 macOS 侧对齐。
+  RegisterSystemFontListChannel(flutter_controller_->engine()->messenger());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {

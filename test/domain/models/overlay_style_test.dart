@@ -23,6 +23,26 @@ void main() {
       expect(updated.gap, style.gap);
     });
 
+    test('copyWith 可将 textFontFamily 置回 null(切回系统默认)', () {
+      const style = OverlayStyle(textFontFamily: 'Microsoft YaHei');
+
+      // 不带 clear 参数时保留原值(copyWith 不应误清空)。
+      expect(style.copyWith().textFontFamily, 'Microsoft YaHei');
+      // 选择“默认(系统)”时显式清空。
+      expect(style.copyWith(clearTextFontFamily: true).textFontFamily, isNull);
+    });
+
+    test('textFontFamily 序列化往返一致,缺键回退 null', () {
+      const style = OverlayStyle(textFontFamily: '微软雅黑');
+      final restored = OverlayStyle.fromJson(style.toJson());
+
+      expect(restored.textFontFamily, '微软雅黑');
+      expect(restored, style);
+
+      final missing = OverlayStyle.fromJson(<dynamic, dynamic>{});
+      expect(missing.textFontFamily, isNull);
+    });
+
     test('toJson/fromJson 往返一致', () {
       const style = OverlayStyle(
         heartSize: 90,
@@ -56,7 +76,10 @@ void main() {
     });
 
     test('相等性:字段相同则相等', () {
-      expect(const OverlayStyle(heartSize: 80), const OverlayStyle(heartSize: 80));
+      expect(
+        const OverlayStyle(heartSize: 80),
+        const OverlayStyle(heartSize: 80),
+      );
       expect(
         const OverlayStyle(heartSize: 80),
         isNot(const OverlayStyle(heartSize: 64)),
