@@ -43,8 +43,8 @@ class OverlayView extends StatelessWidget {
   final VoidCallback? onTap;
 
   /// 数字字重:由数值映射到 FontWeight。
-  FontWeight get _numberWeight => FontWeight
-      .values[(style.textWeight / 100).round().clamp(1, 9) - 1];
+  FontWeight get _numberWeight =>
+      FontWeight.values[(style.textWeight / 100).round().clamp(1, 9) - 1];
 
   @override
   Widget build(BuildContext context) {
@@ -79,7 +79,10 @@ class OverlayView extends StatelessWidget {
                     ecgStyle: style.ecgStyle,
                     heartColor: style.heartColor,
                     ecgColor: style.ecgColor,
-                    pulsePhase: style.heartPulseEnabled ? phase : 0.0,
+                    // 始终传入实时相位:律动关闭时心形缩放由 painter 内部
+                    // 固定为 1.0,心电图仍按文档约定照常动画
+                    // (此前冻结在相位 0 会让 ECG 隐形并留下起点白点)。
+                    pulsePhase: phase,
                     heartPulseEnabled: style.heartPulseEnabled,
                     glowRadius: style.glowRadius,
                     glowOpacity: style.glowOpacity,
@@ -161,15 +164,27 @@ class OverlayView extends StatelessWidget {
                     child: content,
                   );
 
-                  // 折线图固定在底部,心形与数字占上方区域。
+                  // 折线图固定在底部,心形与数字占上方区域;
+                  // 开启折线图时内容贴近折线图,使 chartSpacing 即两者实际间距
+                  // (垂直居中会在背景板有剩余高度时产生额外的空隙)。
                   return Column(
                     children: [
                       Expanded(
-                        child: Center(child: contentBlock),
+                        child: style.showChart
+                            ? Align(
+                                alignment: Alignment.bottomCenter,
+                                child: contentBlock,
+                              )
+                            : Center(child: contentBlock),
                       ),
                       if (style.showChart)
                         Padding(
-                          padding: EdgeInsets.fromLTRB(8, style.chartSpacing, 8, 8),
+                          padding: EdgeInsets.fromLTRB(
+                            8,
+                            style.chartSpacing,
+                            8,
+                            8,
+                          ),
                           child: SizedBox(
                             height: style.chartHeight,
                             width: double.infinity,
@@ -192,7 +207,8 @@ class OverlayView extends StatelessWidget {
 
   /// 数字标签的排列方向:左右位置用竖排,上下位置用横排。
   Axis get _bpmAxis =>
-      style.bpmPosition == BpmPosition.left || style.bpmPosition == BpmPosition.right
-          ? Axis.vertical
-          : Axis.horizontal;
+      style.bpmPosition == BpmPosition.left ||
+          style.bpmPosition == BpmPosition.right
+      ? Axis.vertical
+      : Axis.horizontal;
 }

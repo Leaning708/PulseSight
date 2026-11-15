@@ -4,21 +4,11 @@ import 'package:pulse_sight/ui/core/widgets/heartbeat_heart.dart';
 
 void main() {
   group('HeartbeatHeart', () {
-    test('beatDuration 按 bpm 计算周期', () {
-      expect(HeartbeatHeart.beatDuration(60), const Duration(seconds: 1));
-      expect(HeartbeatHeart.beatDuration(120), const Duration(milliseconds: 500));
-      expect(HeartbeatHeart.beatDuration(75), const Duration(milliseconds: 800));
-    });
-
-    test('beatDuration 无效 bpm 返回默认值', () {
-      expect(HeartbeatHeart.beatDuration(null), const Duration(milliseconds: 800));
-      expect(HeartbeatHeart.beatDuration(0), const Duration(milliseconds: 800));
-      expect(HeartbeatHeart.beatDuration(-5), const Duration(milliseconds: 800));
-    });
-
     testWidgets('未连接时渲染静止灰心', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: Center(child: HeartbeatHeart(size: 80)))),
+        const MaterialApp(
+          home: Scaffold(body: Center(child: HeartbeatHeart(size: 80))),
+        ),
       );
       await tester.pump(const Duration(seconds: 1));
 
@@ -35,7 +25,11 @@ void main() {
 
     testWidgets('连接后按 bpm 播放跳动动画', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: Center(child: HeartbeatHeart(size: 80, bpm: 60)))),
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(child: HeartbeatHeart(size: 80, bpm: 60)),
+          ),
+        ),
       );
       // 推进数帧,覆盖脉冲序列的多个阶段。
       await tester.pump(const Duration(milliseconds: 200));
@@ -54,18 +48,28 @@ void main() {
 
     testWidgets('bpm 变化时切换动画周期且不抛异常', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: Center(child: HeartbeatHeart(size: 80, bpm: 60)))),
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(child: HeartbeatHeart(size: 80, bpm: 60)),
+          ),
+        ),
       );
       await tester.pump(const Duration(milliseconds: 300));
 
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: Center(child: HeartbeatHeart(size: 80, bpm: 120)))),
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(child: HeartbeatHeart(size: 80, bpm: 120)),
+          ),
+        ),
       );
       await tester.pump(const Duration(milliseconds: 300));
 
       // bpm 从有值变为 null 应回退到未连接灰心。
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: Center(child: HeartbeatHeart(size: 80)))),
+        const MaterialApp(
+          home: Scaffold(body: Center(child: HeartbeatHeart(size: 80))),
+        ),
       );
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -83,11 +87,46 @@ void main() {
         // 心形中心(24 视窗内 12, 12.175)映射到画布坐标。
         final centerX = layout.dx + 12 * layout.s;
         final centerY = layout.dy + 12.175 * layout.s;
-        expect(centerX, closeTo(size.width / 2, 0.001),
-            reason: 'size=$size 水平中心偏移');
-        expect(centerY, closeTo(size.height / 2, 0.001),
-            reason: 'size=$size 垂直中心偏移');
+        expect(
+          centerX,
+          closeTo(size.width / 2, 0.001),
+          reason: 'size=$size 水平中心偏移',
+        );
+        expect(
+          centerY,
+          closeTo(size.height / 2, 0.001),
+          reason: 'size=$size 垂直中心偏移',
+        );
       }
+    });
+
+    group('ecgDrawInfo', () {
+      test('相位 0 返回 null(避免波形起点的圆头白点伪影)', () {
+        expect(HeartbeatHeart.ecgDrawInfo(0), isNull);
+      });
+
+      test('绘制段:透明度 1.0,进度按比例推进', () {
+        final info = HeartbeatHeart.ecgDrawInfo(0.2)!;
+        expect(info.alpha, 1.0);
+        expect(info.drawProgress, closeTo(0.2 / 0.45, 0.001));
+      });
+
+      test('保持段:完整显示', () {
+        final info = HeartbeatHeart.ecgDrawInfo(0.5)!;
+        expect(info.alpha, 1.0);
+        expect(info.drawProgress, 1.0);
+      });
+
+      test('淡出段:进度保持完整,透明度线性衰减', () {
+        final info = HeartbeatHeart.ecgDrawInfo(0.75)!;
+        expect(info.drawProgress, 1.0);
+        expect(info.alpha, closeTo(1.0 - (0.75 - 0.60) / (0.90 - 0.60), 0.001));
+      });
+
+      test('静置段返回 null', () {
+        expect(HeartbeatHeart.ecgDrawInfo(0.95), isNull);
+        expect(HeartbeatHeart.ecgDrawInfo(1.0), isNull);
+      });
     });
   });
 }

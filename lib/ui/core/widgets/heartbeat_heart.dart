@@ -4,6 +4,7 @@ import 'package:material_ui/material_ui.dart';
 
 import '../../../domain/models/overlay_style.dart';
 import '../theme/app_theme.dart';
+import 'heartbeat_pulse.dart';
 
 /// 随 bpm 节奏跳动的红心组件。
 ///
@@ -12,11 +13,11 @@ import '../theme/app_theme.dart';
 /// [bpm] 为 null 时显示静止的灰色空心态(未连接/无数据)。
 /// [heartColor] 自定义心形颜色(渐变自动衍生),[ecgColor] 自定义心电图线颜色。
 /// 传入 [pulsePhase](0~1,心跳周期相位)时以此驱动绘制(与文字等元素
-/// 同步律动);不传则组件内部自驱动动画。
+/// 同步律动);不传则内部经 [HeartbeatPulse] 自驱动动画。
 /// [heartPulseEnabled] 为 false 时心形静止(仅脉冲关闭,心电图动画照常);
 /// [glowRadius]/[glowOpacity] 分别调节心跳辉光的半径与透明度。
 /// 三端复用:主界面预览、桌面悬浮窗、Android 悬浮窗。
-class HeartbeatHeart extends StatefulWidget {
+class HeartbeatHeart extends StatelessWidget {
   /// 创建红心;[size] 为绘制区域的边长。
   const HeartbeatHeart({
     super.key,
@@ -61,29 +62,41 @@ class HeartbeatHeart extends StatefulWidget {
   final double glowOpacity;
 
   @override
-  State<HeartbeatHeart> createState() => _HeartbeatHeartState();
-
-  /// 根据 bpm 计算一次心跳的动画周期;[bpm] 无效时返回 800ms(未连接态不使用)。
-  static Duration beatDuration(int? bpm) {
-    if (bpm == null || bpm <= 0) return const Duration(milliseconds: 800);
-    return Duration(milliseconds: (60 * 1000 / bpm).round());
+  Widget build(BuildContext context) {
+    // 外部相位驱动:与文字等元素共享同一动画(同步律动)。
+    if (pulsePhase != null) {
+      return _paintHeart(phase: pulsePhase!, idle: bpm == null);
+    }
+    final disconnected = bpm == null;
+    if (disconnected) {
+      return _paintHeart(phase: 0, idle: true);
+    }
+    // 内部自驱动:复用 [HeartbeatPulse],bpm 与心跳周期的同步逻辑统一维护。
+    return HeartbeatPulse(
+      bpm: bpm,
+      builder: (context, pulse, phase) =>
+          _paintHeart(phase: phase, idle: false),
+    );
   }
 
-  /// 脉冲缩放序列:快速扩张 → 缓慢回落 → 静置至周期结束。
-  static Animatable<double> pulseSequence() {
-    return TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(begin: 1.0, end: 1.22)
-            .chain(CurveTween(curve: Curves.easeOutCubic)),
-        weight: 18,
+  Widget _paintHeart({required double phase, required bool idle}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: CustomPaint(
+        painter: _HeartPainter(
+          phase: phase,
+          showEcg: !idle && ecgStyle != EcgStyle.none,
+          ecgStyle: ecgStyle,
+          bpm: bpm,
+          heartColor: idle ? AppTheme.heartIdle : heartColor,
+          ecgColor: idle ? AppTheme.heartIdle : ecgColor,
+          heartPulseEnabled: heartPulseEnabled,
+          glowRadius: glowRadius,
+          glowOpacity: glowOpacity,
+        ),
       ),
-      TweenSequenceItem(
-        tween: Tween(begin: 1.22, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeInOutCubic)),
-        weight: 32,
-      ),
-      TweenSequenceItem(tween: ConstantTween(1.0), weight: 50),
-    ]);
+    );
   }
 
   /// 计算心形从 24 视窗映射到画布的布局参数:
@@ -97,91 +110,34 @@ class HeartbeatHeart extends StatefulWidget {
     final dy = (size.height - 18.35 * s) / 2 - 3 * s;
     return (s: s, dx: dx, dy: dy);
   }
-}
 
-class _HeartbeatHeartState extends State<HeartbeatHeart>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: HeartbeatHeart.beatDuration(widget.bpm),
-  );
+  /// 根据心跳周期相位(0~1)计算心电图本拍的绘制透明度与进度;
+  /// 返回 null 表示本拍不绘制(周期起点尚未开始,或结尾静置期)。
+  ///
+  /// 相位为 0 时必须返回 null:零长度路径经圆头端点描边会渲染成一颗圆点,
+  /// 否则会在波形起点(心形左侧)留下"白点"伪影。
+  @visibleForTesting
+  static ({double alpha, double drawProgress})? ecgDrawInfo(double phase) {
+    const drawEnd = 0.45;
+    const holdEnd = 0.60;
+    const fadeEnd = 0.90;
 
-  late final Animation<double> _scale =
-      HeartbeatHeart.pulseSequence().animate(_controller);
-
-  @override
-  void didUpdateWidget(HeartbeatHeart oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final wasActive = oldWidget.bpm != null;
-    final isActive = widget.bpm != null;
-    if (widget.bpm != oldWidget.bpm) {
-      _controller.duration = HeartbeatHeart.beatDuration(widget.bpm);
+    if (phase <= 0) {
+      return null; // 波形尚未开始绘制。
     }
-    // 外部相位驱动模式下不启用内部控制器。
-    if (widget.pulsePhase != null) return;
-    if (isActive && !wasActive) {
-      _controller.repeat();
-    } else if (!isActive && wasActive) {
-      // 断连:复位到原始大小并停止。
-      _controller.stop();
-      _controller.value = 0;
+    if (phase < drawEnd) {
+      return (alpha: 1.0, drawProgress: phase / drawEnd);
     }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.bpm != null && widget.pulsePhase == null) {
-      _controller.repeat();
+    if (phase < holdEnd) {
+      return (alpha: 1.0, drawProgress: 1.0);
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // 外部相位驱动:与文字等元素共享同一动画(同步律动)。
-    if (widget.pulsePhase != null) {
-      return _paintHeart(
-        phase: widget.pulsePhase!,
-        idle: widget.bpm == null,
+    if (phase < fadeEnd) {
+      return (
+        alpha: 1.0 - (phase - holdEnd) / (fadeEnd - holdEnd),
+        drawProgress: 1.0,
       );
     }
-    final disconnected = widget.bpm == null;
-    if (disconnected) {
-      return _paintHeart(phase: 0, idle: true);
-    }
-    return AnimatedBuilder(
-      animation: _scale,
-      builder: (context, _) => _paintHeart(
-        phase: _controller.value,
-        idle: false,
-      ),
-    );
-  }
-
-  Widget _paintHeart({required double phase, required bool idle}) {
-    return SizedBox(
-      width: widget.size,
-      height: widget.size,
-      child: CustomPaint(
-        painter: _HeartPainter(
-          phase: phase,
-          showEcg: !idle && widget.ecgStyle != EcgStyle.none,
-          ecgStyle: widget.ecgStyle,
-          bpm: widget.bpm,
-          heartColor: idle ? AppTheme.heartIdle : widget.heartColor,
-          ecgColor: idle ? AppTheme.heartIdle : widget.ecgColor,
-          heartPulseEnabled: widget.heartPulseEnabled,
-          glowRadius: widget.glowRadius,
-          glowOpacity: widget.glowOpacity,
-        ),
-      ),
-    );
+    return null; // 静置期,不绘制。
   }
 }
 
@@ -230,13 +186,11 @@ class _HeartPainter extends CustomPainter {
   /// 脉冲缩放系数:脉冲关闭时恒为 1.0(心形静止),
   /// 开启时由相位经脉冲序列推导。
   double get _scale => heartPulseEnabled
-      ? HeartbeatHeart.pulseSequence()
-          .evaluate(AlwaysStoppedAnimation(phase))
+      ? HeartbeatPulse.pulseSequence().evaluate(AlwaysStoppedAnimation(phase))
       : 1.0;
 
   /// 渐变亮部:主色向白色插值。
-  Color get _topColor =>
-      Color.lerp(heartColor, const Color(0xFFFFFFFF), 0.28)!;
+  Color get _topColor => Color.lerp(heartColor, const Color(0xFFFFFFFF), 0.28)!;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -321,24 +275,10 @@ class _HeartPainter extends CustomPainter {
   /// digits 样式改为在心内淡入/淡出 BPM 数字。
   /// 用 [heartPath] 裁剪,使线只在心形内部可见。
   void _drawEcg(Canvas canvas, Path heartPath) {
-    const drawEnd = 0.45;
-    const holdEnd = 0.60;
-    const fadeEnd = 0.90;
-
-    double alpha;
-    double drawProgress;
-    if (phase < drawEnd) {
-      alpha = 1.0;
-      drawProgress = phase / drawEnd;
-    } else if (phase < holdEnd) {
-      alpha = 1.0;
-      drawProgress = 1.0;
-    } else if (phase < fadeEnd) {
-      alpha = 1.0 - (phase - holdEnd) / (fadeEnd - holdEnd);
-      drawProgress = 1.0;
-    } else {
-      return; // 静置期,不绘制。
-    }
+    final info = HeartbeatHeart.ecgDrawInfo(phase);
+    if (info == null) return;
+    final alpha = info.alpha;
+    final drawProgress = info.drawProgress;
 
     canvas.save();
     canvas.clipPath(heartPath);
@@ -356,10 +296,7 @@ class _HeartPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      tp.paint(
-        canvas,
-        Offset(12 - tp.width / 2, _ecgBaseline - tp.height / 2),
-      );
+      tp.paint(canvas, Offset(12 - tp.width / 2, _ecgBaseline - tp.height / 2));
       canvas.restore();
       return;
     }
@@ -393,8 +330,10 @@ class _HeartPainter extends CustomPainter {
       return;
     }
     final metric = metrics.first;
-    final visible =
-        metric.extractPath(0, metric.length * drawProgress.clamp(0.0, 1.0));
+    final visible = metric.extractPath(
+      0,
+      metric.length * drawProgress.clamp(0.0, 1.0),
+    );
 
     // 柔光描边,制造霓虹质感。
     canvas.drawPath(
@@ -442,10 +381,14 @@ class _HeartPainter extends CustomPainter {
       case EcgStyle.classic:
         // 完整 P-QRS-T 复合波。
         return _bump(u, 0.30, 0.09, -1.1) // P 波
-            + _bump(u, 0.475, 0.028, 0.9) // Q
-            + _bump(u, 0.5, 0.045, -5.2) // R 尖峰
-            + _bump(u, 0.555, 0.045, 2.6) // S
-            + _bump(u, 0.75, 0.13, -2.0); // T 波
+            +
+            _bump(u, 0.475, 0.028, 0.9) // Q
+            +
+            _bump(u, 0.5, 0.045, -5.2) // R 尖峰
+            +
+            _bump(u, 0.555, 0.045, 2.6) // S
+            +
+            _bump(u, 0.75, 0.13, -2.0); // T 波
     }
   }
 }
