@@ -3,6 +3,8 @@
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+#include "desktop_multi_window/desktop_multi_window_plugin.h"
+#include "overlay_window_support.h"
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -25,6 +27,21 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  // Secondary windows created by desktop_multi_window run in their own
+  // engines where plugins are not registered by default. Register the
+  // window-created callback so plugins (e.g. window_manager) work inside
+  // the overlay window engine too.
+  DesktopMultiWindowSetWindowCreatedCallback([](void* controller) {
+    auto* flutter_view_controller =
+        reinterpret_cast<flutter::FlutterViewController*>(controller);
+    auto* engine = flutter_view_controller->engine();
+    RegisterPlugins(engine);
+    // Register the overlay helper channel (transparent / bottom-right
+    // positioning) on each secondary window engine, mirroring macOS.
+    OverlayWindowSupport::Register(engine->messenger(),
+                                   flutter_view_controller->view()
+                                       ->GetNativeWindow());
+  });
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
