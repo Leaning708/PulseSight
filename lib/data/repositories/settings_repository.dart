@@ -13,6 +13,12 @@ abstract interface class SettingsRepository {
 
 /// 设置项键名。
 abstract final class SettingsKeys {
+  /// 模拟心率场景(枚举名:low / medium / high)。
+  static const simulatedScenario = 'simulated.scenario';
+
+  /// OBS 浏览器源本地服务开关。
+  static const obsOverlayEnabled = 'obs_overlay.enabled';
+
   /// 桌面悬浮窗开关(Windows / macOS)。
   static const desktopOverlayEnabled = 'desktop_overlay.enabled';
 
@@ -108,12 +114,14 @@ abstract final class SettingsKeys {
 class SharedPreferencesSettingsRepository implements SettingsRepository {
   /// 创建仓库;[prefs] 可注入用于测试。
   SharedPreferencesSettingsRepository({SharedPreferencesAsync? prefs})
-      : _prefs = prefs ?? SharedPreferencesAsync();
+    : _prefs = prefs ?? SharedPreferencesAsync();
 
   final SharedPreferencesAsync _prefs;
 
   /// 已知键与其值类型的注册表,驱动 loadAll 的类型化读取。
   static const Map<String, String> _knownKeys = {
+    SettingsKeys.simulatedScenario: 'string',
+    SettingsKeys.obsOverlayEnabled: 'bool',
     SettingsKeys.desktopOverlayEnabled: 'bool',
     SettingsKeys.mousePassthroughEnabled: 'bool',
     SettingsKeys.menubarEnabled: 'bool',
@@ -174,7 +182,11 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
       case String():
         await _prefs.setString(key, value);
       default:
-        throw ArgumentError.value(value, 'value', '仅支持 bool/double/String/null');
+        throw ArgumentError.value(
+          value,
+          'value',
+          '仅支持 bool/double/String/null',
+        );
     }
   }
 }
