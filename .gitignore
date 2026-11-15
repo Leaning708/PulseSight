@@ -74,8 +74,6 @@ app.*.map.json
 # macOS related
 **/macos/Flutter/GeneratedPluginRegistrant.swift
 **/macos/Flutter/ephemeral
-**/macos/Flutter/Flutter-Debug.xcconfig
-**/macos/Flutter/Flutter-Release.xcconfig
 
 # Web related
 lib/generated_plugin_registrant.dart
