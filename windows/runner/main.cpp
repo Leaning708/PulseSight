@@ -18,6 +18,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // Use the Skia backend on Windows, matching the macOS build.
+  //
+  // Impeller on Windows mis-transforms glyphs whenever the frame contains a
+  // saveLayer (any Opacity / FadeTransition / AnimatedOpacity):
+  //   * a disabled setting row painted the header heart icon far away from its
+  //     position, squeezed into a 15x310 sliver at ~55% alpha;
+  //   * hovering a tooltipped button (IconButton tooltip -> FadeTransition for
+  //     150 ms) briefly produced the same artifact.
+  // Verified by A/B: same Dart code renders correctly with Skia and breaks with
+  // Impeller. Keep this file ASCII-only (MSVC treats C4819 as an error).
+  project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
