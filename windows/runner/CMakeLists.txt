@@ -32,6 +32,19 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_BUILD=${FLUTT
 # Disable Windows macros that collide with C++ standard library functions.
 target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 
+# Parse runner sources as UTF-8 regardless of the system code page.
+#
+# The repository forces LF line endings (.gitattributes: `* text=auto eol=lf`),
+# and MSVC running under a double-byte code page (e.g. 936) mis-tokenizes a
+# UTF-8 multibyte character placed right before a bare LF: it treats the last
+# byte as a lead byte and swallows the newline, so the following source line is
+# pulled into the trailing comment. That produced a hard syntax error in
+# `system_font_list.cpp` (its Chinese comments). /utf-8 also silences C4819,
+# which this project promotes to an error.
+if(MSVC)
+  target_compile_options(${BINARY_NAME} PRIVATE "/utf-8")
+endif()
+
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
