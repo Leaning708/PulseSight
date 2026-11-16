@@ -59,15 +59,42 @@ HeartRateSource(模拟)                    ← 未来:小米手环 BLE 广播实
 
 ## 各平台显示端实现
 
-### Windows / macOS 桌面悬浮窗
+### 桌面悬浮窗(macOS / Windows 两种实现)
 
-- `desktop_multi_window` 创建独立引擎的副窗口(args=`overlay`,启动即隐藏)
-- 副窗口引擎内的 `windowManager`(window_manager 0.5.2,引擎级绑定)完成:
-  无边框(`setAsFrameless`)、置顶、右下角初始定位(原生 `NSScreen.visibleFrame`)
-- 纯透明窗口在 Flutter 3.50 桌面端(Skia)不可实现(三层透明修复后仍黑底,引擎层限制)——采用深色底板样式,底板颜色/透明度/宽高均可调
+两端共用 `DesktopOverlay` 抽象(`show/hide/setPassthrough/setStyle`),
+`HomeViewModel` 与 UI 完全无感;差异只在窗口宿主:
+
+| 平台 | 实现 | 窗口宿主 | 状态传递 |
+|---|---|---|---|
+| macOS | `DesktopOverlayService` | `desktop_multi_window` 进程内副窗口(第二个引擎) | `WindowController.invokeMethod`(跨窗口通道) |
+| Windows | `WindowsOverlayProcessService` | **独立子进程**(同一个 exe 以 `--overlay-process` 自举) | 回环 TCP + 换行 JSON(`overlay_ipc.dart`) |
+
+> Windows 之所以另起进程:Flutter 的 Windows 嵌入层不支持单进程多引擎,
+> 第二个视图会重置平台线程的 EGL current context,导致 `flutter_windows.dll`
+> 随机 `0xc0000005`(详见 [troubleshooting §10](troubleshooting.md))。
+> 这是**临时方案**,官方 Desktop Windowing API 转正后应回到单引擎多视图,
+> 见 [TODO.md](../TODO.md)。
+
+共用部分:
+
+- 窗口样式:`windowManager`(window_manager 0.5.2)设置无边框
+  (`setAsFrameless`)、置顶、跳过任务栏(仅 Windows)、右下角初始定位
+  (macOS 用原生 `NSScreen.visibleFrame`;Windows 用 `setAlignment` + 边距)
+- 纯透明窗口在 Flutter 3.50 桌面端不可实现(引擎层限制)——采用深色底板样式,
+  底板颜色/透明度/宽高均可调
 - 拖动:`onPanStart → windowManager.startDragging()`
-- 样式推送:主窗口经 `WindowController.invokeMethod('update', {bpm, status, style})`;副窗口 `_handleMethodCall` 还原 OverlayStyle 并 `windowManager.setSize` 联动窗口尺寸
+- 悬浮窗内容:两端都直接用 `OverlayView` + `OverlayViewModel`
+  (macOS `DesktopOverlayPage`;Windows `OverlayProcessPage`)
 - 心率折线图:`HeartRateChart`(CustomPainter)置于悬浮窗底部
+
+Windows 子进程要点:
+
+- 由主进程 `OverlayHostLink` 绑定 `127.0.0.1:0` 后拉起同名 exe,
+  子进程连回该端口;绑定回环地址不会触发防火墙弹窗
+- 子进程启动即隐藏,配置完窗口后回 `ready`,主进程再补发 `show` 与最新快照,
+  避免闪烁与丢帧
+- 主进程退出/链路断开时子进程自行退出;主进程侧还有兜底强杀
+- 卡片式容错:连续启动失败 3 次后熔断,不再反复拉起
 
 ### macOS 菜单栏心率
 

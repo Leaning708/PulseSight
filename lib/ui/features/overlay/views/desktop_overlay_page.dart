@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -53,14 +54,36 @@ class _DesktopOverlayPageState extends State<DesktopOverlayPage> {
   Future<void> _registerMethodHandler() async {
     try {
       final controller = await WindowController.fromCurrentEngine();
-      controller.setWindowMethodHandler(_handleMethodCall);
+      await controller.setWindowMethodHandler(_handleMethodCall);
+      _handlerReady.complete();
     } on Exception {
       // 非 desktop_multi_window 引擎(如热重载场景),忽略。
+      _handlerReady.complete();
     }
+  }
+
+  /// 跨窗口方法处理器是否已就绪(仅测试与调试使用)。
+  final Completer<void> _handlerReady = Completer<void>();
+
+  /// 等待副窗口的跨窗口方法通道注册完成。
+  Future<void> get handlerReady => _handlerReady.future;
+
+  /// 把一次跨窗口调用交给本页登记的处理器
+  /// ([DesktopOverlayPage] 方法的可见性入口,供测试复现平台转发)。
+  Future<dynamic> handleCrossWindowCall(String channel, MethodCall call) async {
+    final controller = await WindowController.fromCurrentEngine();
+    if (channel != 'mixin.one/window_controller/${controller.windowId}') {
+      throw StateError('未知的跨窗口通道: $channel');
+    }
+    return _handleMethodCall(call);
   }
 
   Future<dynamic> _handleMethodCall(MethodCall call) async {
     switch (call.method) {
+      // 每个 case 必须显式 break:旧实现漏写,`update` 处理完会继续落入
+      // `setPassthrough`,对 Map 做 `as bool` 强转抛 TypeError,
+      // 副窗口引擎的 isolate 无人守护,数据推送链路就此中断
+      // (悬浮窗停留在未连接状态),且该异常会污染引擎错误上报。
       case 'update':
         final args = Map<Object?, Object?>.from(call.arguments as Map);
         _viewModel.update(
@@ -75,6 +98,7 @@ class _DesktopOverlayPageState extends State<DesktopOverlayPage> {
           _viewModel.setStyle(style);
           _applyWindowSize(style);
         }
+        break;
       case 'setPassthrough':
         final value = call.arguments as bool;
         if (value != _passthrough) {
@@ -82,6 +106,7 @@ class _DesktopOverlayPageState extends State<DesktopOverlayPage> {
           await windowManager.setIgnoreMouseEvents(_passthrough, forward: true);
           if (mounted) setState(() {});
         }
+        break;
     }
     return null;
   }

@@ -286,6 +286,20 @@ void main() {
       vm.dispose();
     });
 
+    test('未注入桌面悬浮窗服务时开关为空操作且不写持久化', () async {
+      final vm = HomeViewModel(repository: repository, settings: settings);
+      await vm.init();
+      addTearDown(vm.dispose);
+
+      expect(vm.supportsDesktopOverlay, isFalse);
+      await vm.setDesktopOverlayEnabled(true);
+      expect(vm.desktopOverlayEnabled, isFalse);
+      expect(
+        settings.store.containsKey(SettingsKeys.desktopOverlayEnabled),
+        isFalse,
+      );
+    });
+
     test('init 后注入的服务暴露对应平台能力', () async {
       await viewModel.init();
 

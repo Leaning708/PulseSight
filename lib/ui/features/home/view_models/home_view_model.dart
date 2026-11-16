@@ -81,7 +81,7 @@ class HomeViewModel extends ChangeNotifier {
   /// 近期心率采样历史(只读)。
   HeartRateHistory get heartRateHistory => _heartRateHistory;
 
-  /// 是否支持桌面悬浮窗(Windows / macOS)。
+  /// 是否支持桌面悬浮窗(macOS / Windows)。
   bool get supportsDesktopOverlay => _desktopOverlay != null;
 
   /// 是否支持 macOS 菜单栏显示。
@@ -305,8 +305,9 @@ class HomeViewModel extends ChangeNotifier {
     await _settings.setValue(SettingsKeys.themeMode, mode.name);
   }
 
-  /// 开关桌面悬浮窗。
+  /// 开关桌面悬浮窗(平台不支持时为空操作)。
   Future<void> setDesktopOverlayEnabled(bool value) async {
+    if (!supportsDesktopOverlay) return;
     if (_desktopOverlayEnabled == value) return;
     _desktopOverlayEnabled = value;
     notifyListeners();

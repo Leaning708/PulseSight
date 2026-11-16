@@ -13,6 +13,8 @@ import 'data/services/platform/desktop_overlay_service.dart';
 import 'data/services/platform/macos_app_menu_service.dart';
 import 'data/services/platform/macos_menubar_service.dart';
 import 'data/services/platform/obs_overlay_service.dart';
+import 'data/services/platform/overlay_ipc.dart';
+import 'data/services/platform/windows_overlay_process_service.dart';
 import 'data/services/simulated_heart_rate_source.dart';
 import 'domain/models/heart_rate_scenario.dart';
 import 'ui/core/theme/app_theme.dart';
@@ -20,19 +22,32 @@ import 'ui/features/home/view_models/home_view_model.dart';
 import 'ui/features/home/views/home_view.dart';
 import 'ui/features/overlay/views/android_overlay_page.dart';
 import 'ui/features/overlay/views/desktop_overlay_page.dart';
+import 'ui/features/overlay/views/overlay_process_page.dart';
 
 /// 应用入口。
 ///
-/// 桌面端(macOS / Windows)下,desktop_multi_window 创建的悬浮窗副窗口
-/// 会以同一入口启动新引擎,通过 [WindowController.arguments] 区分:
-/// 主窗口参数为空,悬浮窗参数为 [DesktopOverlayService.overlayWindowArgument]。
+/// 三种身份共用同一个可执行文件:
+/// 1. **主窗口**(各平台):正常启动主界面;
+/// 2. **Windows 悬浮窗子进程**:由主进程以
+///    `--overlay-process --overlay-port=<port>` 拉起,只渲染悬浮窗
+///    (见 [OverlayProcessPage]);原因见 [WindowsOverlayProcessService]。
+/// 3. **macOS 悬浮窗副窗口**:desktop_multi_window 以同一入口启动第二个引擎,
+///    通过 [WindowController.arguments] 区分(macOS 进程内方案保持不变)。
 ///
 /// 注意:Android 悬浮窗入口 [overlayMain] 也必须定义在 main.dart——
 /// flutter_overlay_window 的 DartEntrypoint 只在根库中解析入口函数。
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (Platform.isMacOS || Platform.isWindows) {
+  // Windows 悬浮窗子进程:最先判定,避免进入主界面逻辑。
+  final overlayPort = overlayProcessPort(args);
+  if (overlayPort != null) {
+    await _runOverlayProcess(overlayPort);
+    return;
+  }
+
+  // macOS 悬浮窗副窗口(进程内第二个引擎)。
+  if (Platform.isMacOS) {
     final controller = await WindowController.fromCurrentEngine();
     if (controller.arguments == DesktopOverlayService.overlayWindowArgument) {
       runApp(const _DesktopOverlayApp());
@@ -40,6 +55,12 @@ Future<void> main(List<String> args) async {
     }
   }
   await _runMainApp();
+}
+
+/// 连接主进程并渲染悬浮窗子进程界面。
+Future<void> _runOverlayProcess(int port) async {
+  final link = OverlayClientLink();
+  runApp(_OverlayProcessApp(link: link, port: port));
 }
 
 Future<void> _runMainApp() async {
@@ -74,8 +95,12 @@ Future<void> _runMainApp() async {
   final repository = HeartRateRepository(source: source);
 
   final DesktopOverlay? desktopOverlay;
-  if (Platform.isMacOS || Platform.isWindows) {
+  // macOS 用进程内副窗口(稳定);Windows 用独立进程,规避 Flutter Windows
+  // 嵌入层不支持单进程多引擎的限制(见 WindowsOverlayProcessService)。
+  if (Platform.isMacOS) {
     desktopOverlay = DesktopOverlayService(repository: repository);
+  } else if (Platform.isWindows) {
+    desktopOverlay = WindowsOverlayProcessService(repository: repository);
   } else {
     desktopOverlay = null;
   }
@@ -152,7 +177,7 @@ class PulseSightApp extends StatelessWidget {
   }
 }
 
-/// 桌面悬浮窗副窗口应用,运行于独立引擎。
+/// 桌面悬浮窗副窗口应用,运行于独立引擎(仅 macOS 使用)。
 class _DesktopOverlayApp extends StatelessWidget {
   const _DesktopOverlayApp();
 
@@ -163,6 +188,53 @@ class _DesktopOverlayApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       home: const DesktopOverlayPage(),
+    );
+  }
+}
+
+/// Windows 悬浮窗**子进程**应用:连接主进程后渲染悬浮窗。
+class _OverlayProcessApp extends StatefulWidget {
+  const _OverlayProcessApp({required this.link, required this.port});
+
+  final OverlayClientLink link;
+  final int port;
+
+  @override
+  State<_OverlayProcessApp> createState() => _OverlayProcessAppState();
+}
+
+class _OverlayProcessAppState extends State<_OverlayProcessApp> {
+  bool _connected = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_connect());
+  }
+
+  Future<void> _connect() async {
+    try {
+      await widget.link.connect(widget.port);
+      if (mounted) setState(() => _connected = true);
+    } on Object {
+      // 主进程已退出或端口失效:保持空白透明界面,由主进程负责回收。
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_connected) {
+      // 连接完成前不渲染内容,避免出现空白窗口闪烁。
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(backgroundColor: Colors.transparent),
+      );
+    }
+    return MaterialApp(
+      title: 'PulseSight Overlay',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      home: OverlayProcessPage(link: widget.link),
     );
   }
 }
