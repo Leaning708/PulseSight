@@ -1,6 +1,7 @@
 import '../../domain/models/heart_rate_connection.dart';
 import '../../domain/models/heart_rate_reading.dart';
 import '../services/heart_rate_device_scanner.dart';
+import '../services/heart_rate_mode_source.dart';
 import '../services/heart_rate_scenario_source.dart';
 import '../services/heart_rate_source.dart';
 
@@ -44,6 +45,12 @@ class HeartRateRepository {
     return source is HeartRateDeviceScanner
         ? source as HeartRateDeviceScanner
         : null;
+  }
+
+  /// 若数据源支持真实 / 模拟模式切换,返回该能力。
+  HeartRateModeSource? get modeSource {
+    final source = _source;
+    return source is HeartRateModeSource ? source as HeartRateModeSource : null;
   }
 
   /// 开始连接数据源。

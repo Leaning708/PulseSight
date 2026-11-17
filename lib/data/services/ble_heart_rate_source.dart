@@ -3,9 +3,8 @@ import 'dart:async';
 import '../../domain/models/heart_rate_connection.dart';
 import '../../domain/models/heart_rate_device.dart';
 import 'ble_heart_rate_transport.dart';
-import 'heart_rate_device_scanner.dart';
 import 'heart_rate_measurement.dart';
-import 'heart_rate_source.dart';
+import 'real_heart_rate_source.dart';
 
 /// 基于 BLE 心率广播的真实数据源。
 ///
@@ -15,7 +14,7 @@ import 'heart_rate_source.dart';
 ///
 /// 连接状态机与具体蓝牙插件之间隔着 [BleHeartRateTransport],
 /// 便于在无蓝牙硬件的环境中测试扫描、订阅与重连逻辑。
-class BleHeartRateSource implements HeartRateSource, HeartRateDeviceScanner {
+class BleHeartRateSource implements RealHeartRateSource {
   /// 创建数据源。
   ///
   /// [scanTimeout] 为单次扫描时长;[reconnectDelays] 为连接断开后的

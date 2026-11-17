@@ -12,12 +12,14 @@ import '../../../../data/services/platform/font_list_service.dart';
 import '../../../../data/services/platform/macos_app_menu_service.dart';
 import '../../../../data/services/platform/macos_menubar_service.dart';
 import '../../../../data/services/platform/obs_overlay_service.dart';
+import '../../../../data/services/heart_rate_mode_source.dart';
 import '../../../../data/services/heart_rate_scenario_source.dart';
 import '../../../../data/repositories/heart_rate_repository.dart';
 import '../../../../domain/models/heart_rate_connection.dart';
 import '../../../../domain/models/heart_rate_device.dart';
 import '../../../../domain/models/heart_rate_reading.dart';
 import '../../../../domain/models/heart_rate_history.dart';
+import '../../../../domain/models/heart_rate_mode.dart';
 import '../../../../domain/models/heart_rate_scenario.dart';
 import '../../../../domain/models/overlay_style.dart';
 
@@ -52,8 +54,15 @@ class HomeViewModel extends ChangeNotifier {
   StreamSubscription<List<HeartRateDevice>>? _devicesSub;
   StreamSubscription<bool>? _scanningSub;
   StreamSubscription<String>? _errorsSub;
+  StreamSubscription<HeartRateMode>? _modeSub;
 
   bool _initialized = false;
+
+  HeartRateModeSource? _modeSource;
+
+  HeartRateMode _mode = HeartRateMode.real;
+
+  bool _switchingMode = false;
 
   HeartRateConnection _connection = HeartRateConnection.disconnected;
 
@@ -77,7 +86,7 @@ class HomeViewModel extends ChangeNotifier {
 
   ThemeMode _themeMode = ThemeMode.system;
 
-  /// 模拟场景能力;真实数据源为 null。
+  /// 模拟场景能力;真实模式下隐藏场景 UI。
   HeartRateScenarioSource? _scenarioSource;
 
   HeartRateScenario _scenario = HeartRateScenario.medium;
@@ -123,8 +132,20 @@ class HomeViewModel extends ChangeNotifier {
   /// 界面主题模式(跟随系统 / 浅色 / 深色)。
   ThemeMode get themeMode => _themeMode;
 
-  /// 是否支持模拟场景切换(模拟数据源才有该能力)。
-  bool get supportsScenario => _scenarioSource != null;
+  /// 当前是否为模拟模式。
+  bool get isSimulatedMode => _mode == HeartRateMode.simulated;
+
+  /// 当前数据源模式。
+  HeartRateMode get mode => _mode;
+
+  /// 是否支持在真实设备与模拟模式之间切换。
+  bool get supportsModeSwitch => _modeSource != null;
+
+  /// 是否正在切换模式。
+  bool get isSwitchingMode => _switchingMode;
+
+  /// 是否支持模拟场景切换(仅模拟模式下展示)。
+  bool get supportsScenario => isSimulatedMode && _scenarioSource != null;
 
   /// 当前模拟心率场景。
   HeartRateScenario get scenario => _scenario;
@@ -159,8 +180,9 @@ class HomeViewModel extends ChangeNotifier {
   /// 是否可以发起连接(未连接时)。
   bool get canConnect => _connection == HeartRateConnection.disconnected;
 
-  /// 是否支持扫描并选择设备(真实 BLE 数据源才有该能力)。
-  bool get supportsDevicePicker => _repository.deviceScanner != null;
+  /// 是否支持扫描并选择设备(真实模式 + BLE 数据源才有该能力)。
+  bool get supportsDevicePicker =>
+      !isSimulatedMode && _repository.deviceScanner != null;
 
   /// 当前连接 / 正在连接的设备;模拟数据源或未连接时为 null。
   HeartRateDevice? get connectedDevice => _connectedDevice;
@@ -232,6 +254,19 @@ class HomeViewModel extends ChangeNotifier {
 
     // 字体列表懒加载,完成后通知 UI 刷新字体下拉。
     unawaited(_fontList.load().then((_) => notifyListeners()));
+
+    // 模式由 main.dart 按持久化值构造;无可切换能力的旧数据源则按场景能力推断。
+    _modeSource = _repository.modeSource;
+    _mode =
+        _modeSource?.mode ??
+        (_repository.scenarioSource != null
+            ? HeartRateMode.simulated
+            : HeartRateMode.real);
+    _modeSub = _modeSource?.modeStream.listen((mode) {
+      if (_mode == mode) return;
+      _mode = mode;
+      notifyListeners();
+    });
 
     _connection = _repository.status;
     _bpm = _repository.currentBpm;
@@ -389,6 +424,13 @@ class HomeViewModel extends ChangeNotifier {
 
     // 推送初始状态到应用菜单(状态项未创建时为无害写入)。
     unawaited(_syncAppMenu());
+
+    // 以模拟模式启动时自动开始模拟,免去再点一次「开始模拟」。
+    if (_modeSource != null &&
+        isSimulatedMode &&
+        _connection == HeartRateConnection.disconnected) {
+      unawaited(connect());
+    }
   }
 
   /// 直接连接数据源。
@@ -399,6 +441,36 @@ class HomeViewModel extends ChangeNotifier {
     _connectionError = null;
     notifyListeners();
     await _repository.connect();
+  }
+
+  /// 切换真实 / 模拟模式。
+  ///
+  /// 底层 [HeartRateModeSource] 负责先断开旧模式的数据源,两者互斥;
+  /// 切到模拟模式后自动开始模拟,切到真实模式则由用户选择设备连接。
+  Future<void> setMode(HeartRateMode mode) async {
+    final source = _modeSource;
+    if (source == null || mode == _mode || _switchingMode) return;
+    _switchingMode = true;
+    _connectionError = null;
+    _scanError = null;
+    _isScanning = false;
+    _devices = const [];
+    notifyListeners();
+    try {
+      await source.setMode(mode);
+      _mode = source.mode;
+      _connectedDevice = null;
+      _bpm = null;
+      _heartRateHistory.clear();
+      await _settings.setValue(SettingsKeys.heartRateMode, mode.name);
+      notifyListeners();
+      if (mode == HeartRateMode.simulated) {
+        await connect();
+      }
+    } finally {
+      _switchingMode = false;
+      notifyListeners();
+    }
   }
 
   /// 开始设备扫描(打开设备选择弹窗时调用):清空旧结果与过滤条件。
@@ -923,6 +995,7 @@ class HomeViewModel extends ChangeNotifier {
     _devicesSub?.cancel();
     _scanningSub?.cancel();
     _errorsSub?.cancel();
+    _modeSub?.cancel();
     _appMenu?.setToggleHandler(null);
     _appMenu?.setRefreshHandler(null);
     super.dispose();

@@ -20,7 +20,8 @@
 │ Domain 层                                                        │
 │  domain/models     HeartRateReading / HeartRateHistory /          │
 │                    OverlayStyle / HeartRateConnection /           │
-│                    HeartRateScenario / HeartRateDevice            │
+│                    HeartRateScenario / HeartRateDevice /          │
+│                    HeartRateMode                                  │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -29,8 +30,10 @@
 ## 核心数据流
 
 ```
-HeartRateSource(默认 BLE / 可选模拟)
-  └─ bpmStream / connectionStream
+SwitchableHeartRateSource(真实 BLE / 模拟,互斥)
+  ├─ BleHeartRateSource
+  └─ SimulatedHeartRateSource
+      └─ bpmStream / connectionStream
       HeartRateRepository               ← 唯一数据出口
         ├─ HomeViewModel                → HomeView(主界面)
         ├─ DesktopOverlayService        → WindowMethodChannel → 桌面悬浮窗引擎
@@ -61,7 +64,7 @@ HeartRateSource(默认 BLE / 可选模拟)
 - **记住上次设备**:小米手环在 GATT 断开后会停止广播设备名与 `0x180D` 服务标记(扫描包变成空名称、无心率服务),但系统侧设备 ID 仍可直接重连。应用把上次连接的设备 ID / 名称持久化(`ble.last_device_id` / `ble.last_device_name`),扫描结果按 ID 合并并把名称补回,以「上次连接」标记显示;即使广播包不再带心率服务,也可点击直接重连,无需在手环上重新开启心率广播
 - **错误提示**:蓝牙未开启 / 未授权、未找到心率服务、连接超时等经能力接口的错误流送到 `HomeViewModel.connectionError`,主界面直接展示
 - **权限**:macOS 需要 App Sandbox 的 `com.apple.security.device.bluetooth` 与 `NSBluetoothAlwaysUsageDescription`;Android 需要 `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`(API 31+)及旧版蓝牙 / 定位权限;插件在首次扫描时触发系统授权
-- **模拟模式**:`main.dart` 以 `--dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true` 切换到 `SimulatedHeartRateSource`,此时场景切换 UI 才出现
+- **真实 / 模拟模式切换**:`SwitchableHeartRateSource` 同时持有两个数据源,通过 `HeartRateModeSource` 暴露当前模式与切换方法。切换时先同步摘除旧源的事件转发,再异步断开旧源物理链路并接入新源,保证任意时刻只有一路数据;模式持久化在 `heart_rate.mode`,主界面分段选择器切换,模拟模式下自动开始模拟并显示场景入口。`--dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true` 仅作为无历史设置时的初始默认值
 
 ## 模拟心率场景(HeartRateScenario)
 
@@ -186,7 +189,7 @@ abstract interface class HeartRateSource {
 }
 ```
 
-模拟源额外实现 `HeartRateScenarioSource`(场景切换),BLE 源额外实现 `HeartRateDeviceScanner`(扫描 / 指定设备连接);`HeartRateRepository` 以 `scenarioSource` / `deviceScanner` 暴露能力,UI 按能力渲染,不依赖具体数据源。若未来接入其他协议(如厂商私有 GATT),实现这两个接口并在 `main.dart` 替换即可。
+模拟源额外实现 `HeartRateScenarioSource`(场景切换),BLE 源额外实现 `RealHeartRateSource`(同时具备 `HeartRateSource` 与 `HeartRateDeviceScanner`);`SwitchableHeartRateSource` 实现 `HeartRateModeSource`,负责二选一与互斥切换。`HeartRateRepository` 以 `scenarioSource` / `deviceScanner` / `modeSource` 暴露能力,UI 按能力与当前模式渲染,不依赖具体数据源。若未来接入其他协议(如厂商私有 GATT),实现对应接口并接入可切换数据源即可。
 
 ## 关键依赖版本(勿随意升级)
 

@@ -16,6 +16,9 @@ abstract final class SettingsKeys {
   /// 模拟心率场景(枚举名:low / medium / high)。
   static const simulatedScenario = 'simulated.scenario';
 
+  /// 心率数据源模式(枚举名:real / simulated)。
+  static const heartRateMode = 'heart_rate.mode';
+
   /// 上次连接的心率设备 ID(Android 为 MAC,iOS / macOS 为系统 UUID)。
   static const bleLastDeviceId = 'ble.last_device_id';
 
@@ -130,6 +133,7 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
   /// 已知键与其值类型的注册表,驱动 loadAll 的类型化读取。
   static const Map<String, String> _knownKeys = {
     SettingsKeys.simulatedScenario: 'string',
+    SettingsKeys.heartRateMode: 'string',
     SettingsKeys.bleLastDeviceId: 'string',
     SettingsKeys.bleLastDeviceName: 'string',
     SettingsKeys.themeMode: 'string',

@@ -7,6 +7,7 @@
 
 ### Added
 
+- **真实 / 模拟模式切换 UI**:主界面新增「真实设备 / 模拟模式」分段选择器,切换时自动断开另一模式并持久化(`heart_rate.mode`);模拟模式自动开始模拟并显示场景入口,两种数据源严格互斥
 - **真实设备连接(BLE 心率广播)**:`BleHeartRateSource` + `BleHeartRateTransport` 抽象 + `FlutterBlueHeartRateTransport`(flutter_blue_plus 2.3.15),扫描并连接标准心率服务 0x180D,订阅 0x2A37 测量值,支持 8/16 位解析、未佩戴 0 值过滤、断线自动重连(1s/2s/4s)
 - **设备选择弹窗**:默认只列出广播 0x180D 的设备(按 RSSI 排序),可切换「显示全部蓝牙设备」;连接后主界面展示设备名,失败原因直接显示
 - **设备扫描能力接口** `HeartRateDeviceScanner`:与模拟场景能力同一套探测方式,UI 不依赖具体数据源
@@ -40,8 +41,9 @@
 
 ### Changed
 
-- **默认数据源改为真实 BLE**:启动即连接心率广播设备;模拟数据源改为
-  `--dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true` 启动,场景切换 UI 仅在模拟模式显示
+- **默认数据源改为真实 BLE**:默认连接心率广播设备;主界面可随时切换到
+  模拟模式(`PULSESIGHT_SIMULATE_HEART_RATE=true` 仅是无历史设置时的初始默认值),
+  真实 / 模拟模式互斥,场景切换 UI 仅在模拟模式显示
 - **「连接手环」改为「连接设备」**:状态文案去掉「模拟」,连接中可取消,已连接显示设备名;页脚更新为 BLE 连接说明
 - **Windows 悬浮窗恢复可用**:由"暂停提供 + 界面提示"改为**独立子进程**渲染,与 macOS 的进程内方案并存(两端共用 `DesktopOverlay` 抽象,UI 与 ViewModel 无感)
 - README 重写为当前功能集;新增架构/开发/排障文档

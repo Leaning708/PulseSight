@@ -526,7 +526,7 @@ class _DesktopHeader extends StatelessWidget {
             color: connectionStatusColor(viewModel.connection, scheme),
             label: connectionStatusLabel(
               viewModel.connection,
-              simulated: viewModel.supportsScenario,
+              simulated: viewModel.isSimulatedMode,
             ),
             detail: connected ? '${viewModel.bpm ?? '--'} bpm' : null,
           ),

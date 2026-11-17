@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
 import '../../../../../domain/models/heart_rate_connection.dart';
+import '../../../../../domain/models/heart_rate_mode.dart';
 import '../../../../core/theme/app_dimens.dart';
 import '../../../../core/widgets/bpm_display.dart';
 import '../../../../core/widgets/heartbeat_heart.dart';
@@ -32,12 +35,15 @@ Color connectionStatusColor(
   };
 }
 
-/// 连接按钮文案:连接中允许取消,已连接可断开。
-String connectionButtonLabel(HeartRateConnection connection) {
+/// 连接按钮文案:连接中允许取消,已连接可断开;模拟模式使用独立文案。
+String connectionButtonLabel(
+  HeartRateConnection connection, {
+  bool simulated = false,
+}) {
   return switch (connection) {
-    HeartRateConnection.disconnected => '连接设备',
+    HeartRateConnection.disconnected => simulated ? '开始模拟' : '连接设备',
     HeartRateConnection.connecting => '取消连接',
-    HeartRateConnection.connected => '断开连接',
+    HeartRateConnection.connected => simulated ? '停止模拟' : '断开连接',
   };
 }
 
@@ -52,10 +58,34 @@ class ConnectionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final connected = viewModel.connection == HeartRateConnection.connected;
+    final simulated = viewModel.isSimulatedMode;
     final device = viewModel.connectedDevice;
     final error = viewModel.connectionError;
     return Column(
       children: [
+        if (viewModel.supportsModeSwitch) ...[
+          SegmentedButton<HeartRateMode>(
+            key: const Key('heart_rate_mode_selector'),
+            segments: const [
+              ButtonSegment(
+                value: HeartRateMode.real,
+                icon: Icon(Icons.bluetooth),
+                label: Text('真实设备'),
+              ),
+              ButtonSegment(
+                value: HeartRateMode.simulated,
+                icon: Icon(Icons.science_outlined),
+                label: Text('模拟模式'),
+              ),
+            ],
+            selected: {viewModel.mode},
+            showSelectedIcon: false,
+            onSelectionChanged: viewModel.isSwitchingMode
+                ? null
+                : (selection) => unawaited(viewModel.setMode(selection.first)),
+          ),
+          const SizedBox(height: AppSpacing.xl),
+        ],
         HeartbeatHeart(size: 180, bpm: connected ? viewModel.bpm : null),
         const SizedBox(height: AppSpacing.lg),
         BpmDisplay(
@@ -70,7 +100,7 @@ class ConnectionSection extends StatelessWidget {
           color: connectionStatusColor(viewModel.connection, scheme),
           label: connectionStatusLabel(
             viewModel.connection,
-            simulated: viewModel.supportsScenario,
+            simulated: simulated,
           ),
         ),
         if (device != null) ...[
@@ -111,18 +141,22 @@ class ConnectionSection extends StatelessWidget {
               : () => viewModel.disconnect(),
           icon: Icon(
             viewModel.connection == HeartRateConnection.disconnected
-                ? Icons.bluetooth_searching
+                ? simulated
+                      ? Icons.play_arrow
+                      : Icons.bluetooth_searching
                 : Icons.link_off,
           ),
-          label: Text(connectionButtonLabel(viewModel.connection)),
+          label: Text(
+            connectionButtonLabel(viewModel.connection, simulated: simulated),
+          ),
         ),
       ],
     );
   }
 
-  /// 有设备选择能力时弹窗扫描,否则直接交给数据源连接。
+  /// 模拟模式直接开始模拟;真实模式有设备选择能力时弹窗扫描。
   Future<void> _handleConnect(BuildContext context) async {
-    if (!viewModel.supportsDevicePicker) {
+    if (viewModel.isSimulatedMode || !viewModel.supportsDevicePicker) {
       await viewModel.connect();
       return;
     }

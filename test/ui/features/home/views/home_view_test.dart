@@ -7,10 +7,15 @@ import 'package:window_manager/window_manager.dart';
 import 'package:pulse_sight/data/repositories/heart_rate_repository.dart';
 import 'package:pulse_sight/data/repositories/settings_repository.dart';
 import 'package:pulse_sight/data/services/heart_rate_source.dart';
+import 'package:pulse_sight/data/services/simulated_heart_rate_source.dart';
+import 'package:pulse_sight/data/services/switchable_heart_rate_source.dart';
 import 'package:pulse_sight/domain/models/heart_rate_device.dart';
 import 'package:pulse_sight/ui/core/theme/app_theme.dart';
 import 'package:pulse_sight/ui/core/widgets/setting_row.dart';
 import 'package:pulse_sight/ui/features/home/view_models/home_view_model.dart';
+
+import '../../../../data/services/real_heart_rate_source_fake.dart';
+
 import 'package:pulse_sight/ui/features/home/views/home_view.dart';
 
 import '../home_view_model_test.dart'
@@ -118,7 +123,7 @@ void main() {
       }
       // 默认停留在监视器页:连接按钮可见,其余详情面板离屏不渲染。
       expect(find.byKey(const Key('desktop_pane_monitor')), findsOneWidget);
-      expect(find.text('连接设备'), findsOneWidget);
+      expect(find.text('开始模拟'), findsOneWidget);
       expect(find.byKey(const Key('desktop_pane_display')), findsNothing);
       expect(find.byKey(const Key('desktop_pane_style')), findsNothing);
       // 窗口控制按钮:Windows 上标题栏由 Flutter 自绘承担,三个按钮
@@ -171,7 +176,7 @@ void main() {
       expect(find.text('动效与文字'), findsOneWidget);
       expect(find.text('实时预览 · 与悬浮窗观感一致'), findsOneWidget);
       // 切走后监视器页的连接按钮离屏。
-      expect(find.text('连接设备'), findsNothing);
+      expect(find.text('开始模拟'), findsNothing);
     });
 
     testWidgets('接近断点的桌面宽度下样式页退化为堆叠布局且无溢出', (tester) async {
@@ -295,6 +300,48 @@ void main() {
       expect(find.text('已连接'), findsOneWidget);
       expect(find.text('设备:Xiaomi Smart Band 10'), findsOneWidget);
       expect(find.text('断开连接'), findsOneWidget);
+    });
+  });
+
+  group('真实 / 模拟模式 UI', () {
+    testWidgets('模式选择器互斥切换并联动场景入口', (tester) async {
+      final realSource = FakeRealHeartRateSource();
+      final simulatedSource = SimulatedHeartRateSource(
+        connectDelay: Duration.zero,
+        sampleInterval: const Duration(hours: 1),
+      );
+      final switchable = SwitchableHeartRateSource(
+        real: realSource,
+        simulated: simulatedSource,
+      );
+      final (viewModel, _) = await _pump(
+        tester,
+        width: 400,
+        height: 900,
+        source: switchable,
+      );
+
+      expect(find.byKey(const Key('heart_rate_mode_selector')), findsOneWidget);
+      expect(find.text('真实设备'), findsOneWidget);
+      expect(find.text('模拟模式'), findsOneWidget);
+      expect(find.text('开始模拟'), findsNothing);
+
+      await tester.tap(find.text('模拟模式'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(viewModel.isSimulatedMode, isTrue);
+      expect(find.text('停止模拟'), findsOneWidget);
+      expect(find.text('模拟心率场景'), findsOneWidget);
+
+      await tester.tap(find.text('真实设备'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(viewModel.isSimulatedMode, isFalse);
+      expect(find.text('连接设备'), findsOneWidget);
+      expect(find.text('模拟心率场景'), findsNothing);
+      expect(realSource.calls, contains('disconnect'));
     });
   });
 }

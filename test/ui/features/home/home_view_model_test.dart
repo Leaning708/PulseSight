@@ -5,6 +5,8 @@ import 'package:pulse_sight/data/repositories/heart_rate_repository.dart';
 import 'package:pulse_sight/data/repositories/settings_repository.dart';
 import 'package:pulse_sight/data/services/ble_heart_rate_transport.dart';
 import 'package:pulse_sight/data/services/heart_rate_device_scanner.dart';
+import 'package:pulse_sight/data/services/simulated_heart_rate_source.dart';
+import 'package:pulse_sight/data/services/switchable_heart_rate_source.dart';
 import 'package:pulse_sight/data/services/heart_rate_scenario_source.dart';
 import 'package:pulse_sight/data/services/heart_rate_source.dart';
 import 'package:pulse_sight/data/services/platform/android_display_service.dart';
@@ -15,9 +17,12 @@ import 'package:pulse_sight/data/services/platform/macos_menubar_service.dart';
 import 'package:pulse_sight/data/services/platform/obs_overlay_service.dart';
 import 'package:pulse_sight/domain/models/heart_rate_connection.dart';
 import 'package:pulse_sight/domain/models/heart_rate_device.dart';
+import 'package:pulse_sight/domain/models/heart_rate_mode.dart';
 import 'package:pulse_sight/domain/models/heart_rate_scenario.dart';
 import 'package:pulse_sight/domain/models/overlay_style.dart';
 import 'package:pulse_sight/ui/features/home/view_models/home_view_model.dart';
+
+import '../../../data/services/real_heart_rate_source_fake.dart';
 
 /// 手动控制状态与数据的心率源 Fake。
 class FakeHeartRateSource implements HeartRateSource {
@@ -1030,6 +1035,127 @@ void main() {
 
       expect(viewModel.connectedDevice, isNull);
       expect(viewModel.connectionError, isNull);
+    });
+  });
+
+  group('真实 / 模拟模式切换', () {
+    late FakeRealHeartRateSource realSource;
+    late SimulatedHeartRateSource simulatedSource;
+    late SwitchableHeartRateSource source;
+    late HeartRateRepository repository;
+    late FakeSettingsRepository settings;
+    late HomeViewModel viewModel;
+
+    const band = HeartRateDevice(
+      id: 'band-1',
+      name: 'Xiaomi Smart Band 10',
+      advertisesHeartRate: true,
+    );
+
+    setUp(() {
+      realSource = FakeRealHeartRateSource();
+      simulatedSource = SimulatedHeartRateSource(
+        connectDelay: Duration.zero,
+        sampleInterval: const Duration(hours: 1),
+      );
+      source = SwitchableHeartRateSource(
+        real: realSource,
+        simulated: simulatedSource,
+      );
+      repository = HeartRateRepository(source: source);
+      settings = FakeSettingsRepository();
+      viewModel = HomeViewModel(repository: repository, settings: settings);
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+      repository.dispose();
+    });
+
+    test('初始为真实模式,场景 UI 隐藏且支持选设备', () async {
+      await viewModel.init();
+
+      expect(viewModel.supportsModeSwitch, isTrue);
+      expect(viewModel.mode, HeartRateMode.real);
+      expect(viewModel.isSimulatedMode, isFalse);
+      expect(viewModel.supportsScenario, isFalse);
+      expect(viewModel.supportsDevicePicker, isTrue);
+    });
+
+    test('切到模拟模式会断开真实设备并自动开始模拟', () async {
+      await viewModel.init();
+      await viewModel.connectToDevice(band);
+      await pumpEventQueue();
+      expect(viewModel.connection, HeartRateConnection.connected);
+
+      await viewModel.setMode(HeartRateMode.simulated);
+      await pumpEventQueue(times: 20);
+
+      expect(realSource.calls, contains('disconnect'));
+      expect(viewModel.mode, HeartRateMode.simulated);
+      expect(viewModel.isSimulatedMode, isTrue);
+      expect(viewModel.supportsScenario, isTrue);
+      expect(viewModel.supportsDevicePicker, isFalse);
+      expect(viewModel.connection, HeartRateConnection.connected);
+      expect(viewModel.bpm, isNotNull);
+      expect(settings.store[SettingsKeys.heartRateMode], 'simulated');
+    });
+
+    test('切回真实模式会断开模拟并清空数据', () async {
+      await viewModel.init();
+      await viewModel.setMode(HeartRateMode.simulated);
+      await pumpEventQueue(times: 20);
+      expect(viewModel.connection, HeartRateConnection.connected);
+
+      await viewModel.setMode(HeartRateMode.real);
+      await pumpEventQueue();
+
+      expect(simulatedSource.status, HeartRateConnection.disconnected);
+      expect(viewModel.mode, HeartRateMode.real);
+      expect(viewModel.connection, HeartRateConnection.disconnected);
+      expect(viewModel.connectedDevice, isNull);
+      expect(viewModel.bpm, isNull);
+      expect(viewModel.supportsScenario, isFalse);
+      expect(settings.store[SettingsKeys.heartRateMode], 'real');
+    });
+
+    test('以模拟模式启动时自动连接', () async {
+      final localSimulated = SimulatedHeartRateSource(
+        connectDelay: Duration.zero,
+        sampleInterval: const Duration(hours: 1),
+      );
+      final localReal = FakeRealHeartRateSource();
+      final localSource = SwitchableHeartRateSource(
+        real: localReal,
+        simulated: localSimulated,
+        mode: HeartRateMode.simulated,
+      );
+      final localRepository = HeartRateRepository(source: localSource);
+      final localViewModel = HomeViewModel(
+        repository: localRepository,
+        settings: FakeSettingsRepository(),
+      );
+
+      await localViewModel.init();
+      await pumpEventQueue(times: 20);
+
+      expect(localViewModel.isSimulatedMode, isTrue);
+      expect(localViewModel.connection, HeartRateConnection.connected);
+      expect(localViewModel.bpm, isNotNull);
+
+      localViewModel.dispose();
+      localRepository.dispose();
+    });
+
+    test('模拟模式支持场景切换', () async {
+      await viewModel.init();
+      await viewModel.setMode(HeartRateMode.simulated);
+      await pumpEventQueue(times: 20);
+
+      await viewModel.setScenario(HeartRateScenario.high);
+
+      expect(viewModel.scenario, HeartRateScenario.high);
+      expect(simulatedSource.scenario, HeartRateScenario.high);
     });
   });
 }
