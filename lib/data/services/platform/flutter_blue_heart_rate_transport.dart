@@ -222,9 +222,17 @@ class FlutterBlueHeartRateTransport implements BleHeartRateTransport {
     _device = null;
     if (device != null) {
       try {
-        await device.disconnect();
+        // 绕过 FBP 的 GATT 操作队列:Windows 上若有卡住的读写 / 服务发现,
+        // 排队的 disconnect 可能一直轮不到,表现为「App 退出前其他中心设备
+        // 连不上」。queue:false 让断连指令立即下发。
+        await device.disconnect(timeout: 10, queue: false);
       } on Object {
-        // 设备可能已自行断开,忽略清理失败。
+        // 兜底再走一次常规队列,覆盖平台侧瞬时失败。
+        try {
+          await device.disconnect(timeout: 10);
+        } on Object {
+          // 设备可能已自行断开,忽略清理失败。
+        }
       }
     }
   }

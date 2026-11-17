@@ -194,11 +194,14 @@ class BleHeartRateSource implements HeartRateSource, HeartRateDeviceScanner {
     _reconnectAttempt = 0;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    await stopScan();
+    // 先释放设备链路,再等待扫描停止:避免平台侧 stopScan 卡住时断连指令
+    // 一直发不出去,导致其他中心设备无法连接。
+    final stopScanFuture = stopScan();
     await _closeConnection();
     _device = null;
     _bpm = null;
     _setStatus(HeartRateConnection.disconnected);
+    await stopScanFuture;
   }
 
   @override

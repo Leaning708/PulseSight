@@ -240,6 +240,20 @@ rm -rf ~/.gradle/wrapper/dists/gradle-<版本>-<type>
 
 `flutter test` 正常,但含 `tester.runAsync` + 图片捕获的 widget 测试在特定场景会挂起 — 已移除该类测试(改用纯逻辑断言)。若新增卡住,检查是否在 widget 测试中用了 `toImage`。
 
+### 断开后另一台设备连不上 / 必须退出 App
+
+小米手环同一时间只接受一个中心设备连接。若在 Windows 上点了「断开连接」
+后另一台电脑仍连不上,通常是平台侧断连指令被 FBP 的 GATT 操作队列阻塞
+(例如服务发现或通知写入尚未返回),物理链路直到进程退出才释放。
+
+本项目已改为:
+
+1. **`device.disconnect(queue: false)` 绕过操作队列**立即下发断连,并以带队列的常规断连作为兜底;
+2. 断开时**先释放设备链路,再等待扫描停止**,避免 `stopScan` 卡住时断连指令发不出去。
+
+若仍复现,可在 Windows「设置 → 蓝牙和其他设备」确认手环是否仍显示为「已连接」,
+并把当时的 `flutter run` 日志反馈出来。
+
 ### Windows 控制台:`Failed to update ui::AXTree ...`
 
 完整日志形如:

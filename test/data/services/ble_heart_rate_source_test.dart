@@ -33,6 +33,9 @@ class FakeBleTransport implements BleHeartRateTransport {
 
   int connectCount = 0;
 
+  /// 非空时 stopScan 会等待该 Completer(模拟平台侧卡住)。
+  Completer<void>? stopScanGate;
+
   bool disposed = false;
 
   @override
@@ -51,6 +54,7 @@ class FakeBleTransport implements BleHeartRateTransport {
   @override
   Future<void> stopScan() async {
     calls.add('stopScan');
+    await stopScanGate?.future;
   }
 
   @override
@@ -201,6 +205,21 @@ void main() {
       expect(source.currentBpm, isNull);
       expect(source.connectedDevice, isNull);
       expect(transport.calls, contains('disconnect'));
+    });
+
+    test('平台停止扫描卡住时仍会先断开设备', () async {
+      await source.connectTo(_band);
+      await source.startScan();
+      transport.stopScanGate = Completer<void>();
+
+      final disconnectFuture = source.disconnect();
+      await pumpEventQueue();
+
+      expect(transport.calls, contains('disconnect'));
+      expect(source.status, HeartRateConnection.disconnected);
+
+      transport.stopScanGate?.complete();
+      await disconnectFuture;
     });
 
     test('连接失败通过 errors 通知并回到未连接', () async {
