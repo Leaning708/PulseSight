@@ -34,6 +34,28 @@ void main() {
       }
     });
 
+    test('全局字体应用到文本主题', () {
+      final light = AppTheme.lightWithFont('Microsoft YaHei');
+      final dark = AppTheme.darkWithFont('Microsoft YaHei');
+
+      expect(light.textTheme.bodyMedium?.fontFamily, 'Microsoft YaHei');
+      expect(dark.textTheme.bodyMedium?.fontFamily, 'Microsoft YaHei');
+      // 未指定全局字体时不写入自定义字体族。
+      expect(
+        AppTheme.light.textTheme.bodyMedium?.fontFamily,
+        isNot('Microsoft YaHei'),
+      );
+    });
+
+    test('主题为中文配置了跨平台字体回退链', () {
+      expect(AppTheme.cjkFontFamilyFallback, contains('Microsoft YaHei UI'));
+      expect(AppTheme.cjkFontFamilyFallback, contains('PingFang SC'));
+
+      final style = AppTheme.lightWithFont('Segoe UI').textTheme.bodyMedium!;
+      expect(style.fontFamily, 'Segoe UI');
+      expect(style.fontFamilyFallback, AppTheme.cjkFontFamilyFallback);
+    });
+
     test('SnackBar 保持浮动样式', () {
       for (final theme in [AppTheme.light, AppTheme.dark]) {
         expect(theme.snackBarTheme.behavior, SnackBarBehavior.floating);

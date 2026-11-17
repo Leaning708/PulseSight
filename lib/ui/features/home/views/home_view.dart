@@ -6,6 +6,8 @@ import 'package:window_manager/window_manager.dart';
 import '../../../../../domain/models/heart_rate_connection.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../../../core/widgets/status_pill.dart';
+import '../../settings/views/sections/global_font_section.dart';
+import '../../settings/views/settings_page.dart';
 import '../view_models/home_view_model.dart';
 import 'sections/connection_section.dart';
 import 'sections/display_toggles_section.dart';
@@ -51,6 +53,16 @@ class _NarrowHomeBody extends StatelessWidget {
       appBar: AppBar(
         title: const Text('PulseSight'),
         actions: [
+          IconButton(
+            key: const Key('open_settings_button'),
+            tooltip: '设置',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SettingsPage(viewModel: viewModel),
+              ),
+            ),
+          ),
           _ThemeModeButton(viewModel: viewModel),
           const SizedBox(width: AppSpacing.sm),
         ],
@@ -190,6 +202,12 @@ class _DesktopHomeBodyState extends State<_DesktopHomeBody> {
           label: '悬浮窗样式',
           pane: _StylePane(viewModel: vm),
         ),
+      _DesktopNavEntry(
+        keyName: 'settings',
+        icon: Icons.settings_outlined,
+        label: '设置',
+        pane: _SettingsPane(viewModel: vm),
+      ),
     ];
   }
 
@@ -291,8 +309,6 @@ class _NavRail extends StatelessWidget {
                 selected: i == selectedIndex,
                 onTap: () => onSelected(i),
               ),
-            const Spacer(),
-            _footnote(context),
           ],
         ),
       ),
@@ -424,6 +440,33 @@ class _StylePane extends StatelessWidget {
           const SizedBox(height: AppSpacing.lg),
           Expanded(child: OverlayStylePane(viewModel: viewModel)),
         ],
+      ),
+    );
+  }
+}
+
+/// 「设置」详情页:应用级偏好(目前为全局字体)。
+class _SettingsPane extends StatelessWidget {
+  const _SettingsPane({required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: _panePadding,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: desktopPaneMaxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _paneHeader(context, '设置', '影响应用界面与悬浮窗的全局偏好'),
+              const SizedBox(height: AppSpacing.lg),
+              GlobalFontSection(viewModel: viewModel),
+            ],
+          ),
+        ),
       ),
     );
   }

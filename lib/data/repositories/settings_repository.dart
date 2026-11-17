@@ -28,6 +28,9 @@ abstract final class SettingsKeys {
   /// 界面主题模式(枚举名:system / light / dark)。
   static const themeMode = 'app.theme_mode';
 
+  /// 全局字体族;未设置 = 系统默认。应用界面与悬浮窗默认字体。
+  static const globalFontFamily = 'app.font_family';
+
   /// OBS 浏览器源本地服务开关。
   static const obsOverlayEnabled = 'obs_overlay.enabled';
 
@@ -137,6 +140,7 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
     SettingsKeys.bleLastDeviceId: 'string',
     SettingsKeys.bleLastDeviceName: 'string',
     SettingsKeys.themeMode: 'string',
+    SettingsKeys.globalFontFamily: 'string',
     SettingsKeys.obsOverlayEnabled: 'bool',
     SettingsKeys.desktopOverlayEnabled: 'bool',
     SettingsKeys.mousePassthroughEnabled: 'bool',

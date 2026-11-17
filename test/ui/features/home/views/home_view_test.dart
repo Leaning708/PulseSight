@@ -112,14 +112,25 @@ void main() {
       expect(find.text('低'), findsOneWidget);
     });
 
+    testWidgets('窄布局从标题栏进入设置页', (tester) async {
+      await _pump(tester, width: 400, height: 900);
+
+      await tester.tap(find.byKey(const Key('open_settings_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byKey(const Key('settings_page')), findsOneWidget);
+      expect(find.text('全局字体'), findsOneWidget);
+    });
+
     testWidgets('宽窗口渲染桌面设置式布局(导航栏 + 监视器默认页)', (tester) async {
       await _pump(tester, width: 1200, height: 800);
 
       expect(find.byKey(const Key('home_desktop_layout')), findsOneWidget);
       expect(find.byKey(const Key('home_narrow_layout')), findsNothing);
-      // 导航栏与三个条目齐全,模拟场景不再单独成页。
+      // 导航栏与四个条目齐全,模拟场景不再单独成页。
       expect(find.byKey(const Key('desktop_nav_rail')), findsOneWidget);
-      for (final name in ['monitor', 'display', 'style']) {
+      for (final name in ['monitor', 'display', 'style', 'settings']) {
         expect(find.byKey(Key('desktop_nav_$name')), findsOneWidget);
       }
       expect(find.byKey(const Key('desktop_nav_scenario')), findsNothing);
@@ -128,6 +139,7 @@ void main() {
       expect(find.text('开始模拟'), findsOneWidget);
       expect(find.byKey(const Key('desktop_pane_display')), findsNothing);
       expect(find.byKey(const Key('desktop_pane_style')), findsNothing);
+      expect(find.byKey(const Key('desktop_pane_settings')), findsNothing);
       // 窗口控制按钮:Windows 上标题栏由 Flutter 自绘承担,三个按钮
       // 必须贴主窗口右上角;macOS 由系统红绿灯承担,不渲染。
       if (Platform.isWindows) {
@@ -170,8 +182,17 @@ void main() {
       expect(find.text('图表'), findsOneWidget);
       expect(find.text('动效与文字'), findsOneWidget);
       expect(find.text('实时预览 · 与悬浮窗观感一致'), findsOneWidget);
+      // 颜色分组用「心形颜色」;字体默认项跟随全局字体而非系统默认。
+      expect(find.text('心形颜色'), findsOneWidget);
+      expect(find.text('跟随全局(系统默认)'), findsOneWidget);
       // 切走后监视器页的连接按钮离屏。
       expect(find.text('开始模拟'), findsNothing);
+
+      await tester.tap(find.byKey(const Key('desktop_nav_settings')));
+      await tester.pump();
+      expect(find.byKey(const Key('desktop_pane_settings')), findsOneWidget);
+      expect(find.text('全局字体'), findsOneWidget);
+      expect(find.byKey(const Key('desktop_pane_style')), findsNothing);
     });
 
     testWidgets('接近断点的桌面宽度下样式页退化为堆叠布局且无溢出', (tester) async {

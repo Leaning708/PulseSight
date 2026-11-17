@@ -9,6 +9,7 @@
 │ UI 层(MVVM:View + ViewModel)                                    │
 │  ui/features/home          主界面(连接管理 + 显示端开关 + 样式设置)│
 │  ui/features/overlay       悬浮窗内容(三端复用,OverlayView)       │
+│  ui/features/settings      设置页(全局字体,桌面/窄布局共用区块)    │
 │  ui/core                   HeartbeatHeart / BpmDisplay / 主题      │
 ├──────────────────────────────────────────────────────────────────┤
 │ Data 层                                                          │

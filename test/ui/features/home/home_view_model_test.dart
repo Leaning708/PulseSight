@@ -175,6 +175,9 @@ class FakeScenarioHeartRateSource extends FakeHeartRateSource
 class FakeObsOverlayDisplay implements ObsOverlayDisplay {
   final List<String> calls = [];
 
+  /// 最近下发的样式(用于断言全局字体解析等)。
+  final List<OverlayStyle> styles = [];
+
   /// setEnabled 的返回值;false 模拟端口被占用等启动失败。
   bool setEnabledResult = true;
 
@@ -189,6 +192,7 @@ class FakeObsOverlayDisplay implements ObsOverlayDisplay {
 
   @override
   Future<void> setStyle(OverlayStyle style) async {
+    styles.add(style);
     calls.add('style(${style.heartSize})');
   }
 
@@ -212,6 +216,9 @@ class FakeSettingsRepository implements SettingsRepository {
 class FakeDesktopOverlay implements DesktopOverlay {
   final List<String> calls = [];
 
+  /// 最近下发的样式(用于断言全局字体解析等)。
+  final List<OverlayStyle> styles = [];
+
   @override
   Future<void> show({required bool passthrough}) async {
     calls.add('show($passthrough)');
@@ -229,6 +236,7 @@ class FakeDesktopOverlay implements DesktopOverlay {
 
   @override
   Future<void> setStyle(OverlayStyle style) async {
+    styles.add(style);
     calls.add('style(${style.heartSize}/${style.bpmPosition.name})');
   }
 
@@ -286,6 +294,9 @@ class FakeAppMenuDisplay implements AppMenuDisplay {
 
 class FakeAndroidDisplay implements AndroidDisplay {
   final List<String> calls = [];
+
+  /// 最近下发的样式(用于断言全局字体解析等)。
+  final List<OverlayStyle> styles = [];
   bool overlayPermissionGranted = false;
   bool notificationPermissionGranted = false;
 
@@ -317,6 +328,7 @@ class FakeAndroidDisplay implements AndroidDisplay {
 
   @override
   Future<void> setStyle(OverlayStyle style) async {
+    styles.add(style);
     calls.add('style(${style.heartSize}/${style.ecgStyle.name})');
   }
 
@@ -574,11 +586,11 @@ void main() {
       await vm.init();
       await fontList.ready;
 
-      expect(vm.overlayFontFamilies, ['Arial', 'Microsoft YaHei']);
+      expect(vm.fontFamilies, ['Arial', 'Microsoft YaHei']);
       vm.dispose();
     });
 
-    test('选择字体后可切回默认(系统)', () async {
+    test('选择字体后可切回跟随全局', () async {
       await viewModel.init();
 
       viewModel.setOverlayTextFontFamily('Microsoft YaHei');
@@ -590,8 +602,59 @@ void main() {
       expect(
         settings.store[SettingsKeys.overlayTextFontFamily],
         isNull,
-        reason: '切回系统默认后持久化值应被移除',
+        reason: '切回跟随全局后持久化值应被移除',
       );
+    });
+
+    test('init 恢复持久化的全局字体并作为悬浮窗默认字体', () async {
+      settings.store[SettingsKeys.globalFontFamily] = 'Microsoft YaHei';
+
+      await viewModel.init();
+
+      expect(viewModel.globalFontFamily, 'Microsoft YaHei');
+      expect(viewModel.resolvedOverlayStyle.textFontFamily, 'Microsoft YaHei');
+      expect(
+        viewModel.overlayStyle.textFontFamily,
+        isNull,
+        reason: '样式本身仍为跟随全局',
+      );
+    });
+
+    test('全局字体变更时落盘并重新下发悬浮窗样式', () async {
+      await viewModel.init();
+
+      await viewModel.setGlobalFontFamily('Microsoft YaHei');
+      await pumpEventQueue();
+
+      expect(viewModel.globalFontFamily, 'Microsoft YaHei');
+      expect(settings.store[SettingsKeys.globalFontFamily], 'Microsoft YaHei');
+      // 悬浮窗未单独指定字体,下发的是补全后的全局字体。
+      expect(desktopOverlay.styles.last.textFontFamily, 'Microsoft YaHei');
+      expect(androidDisplay.styles.last.textFontFamily, 'Microsoft YaHei');
+
+      await viewModel.setGlobalFontFamily(null);
+      await pumpEventQueue();
+      expect(viewModel.globalFontFamily, isNull);
+      expect(
+        settings.store[SettingsKeys.globalFontFamily],
+        isNull,
+        reason: '恢复系统默认后持久化值应被移除',
+      );
+      expect(desktopOverlay.styles.last.textFontFamily, isNull);
+    });
+
+    test('悬浮窗单独指定的字体优先于全局字体', () async {
+      await viewModel.init();
+      await viewModel.setGlobalFontFamily('Microsoft YaHei');
+
+      viewModel.setOverlayTextFontFamily('Arial');
+      expect(viewModel.resolvedOverlayStyle.textFontFamily, 'Arial');
+      expect(desktopOverlay.styles.last.textFontFamily, 'Arial');
+
+      viewModel.setOverlayTextFontFamily(null);
+      await pumpEventQueue();
+      expect(viewModel.resolvedOverlayStyle.textFontFamily, 'Microsoft YaHei');
+      expect(desktopOverlay.styles.last.textFontFamily, 'Microsoft YaHei');
     });
   });
 

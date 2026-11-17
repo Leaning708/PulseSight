@@ -20,13 +20,35 @@ abstract final class AppTheme {
   /// 与悬浮窗预览容器保持一致。
   static const Color stageColor = Color(0xFF17181C);
 
+  /// 中文字体回退链(按平台优先级排列)。
+  ///
+  /// 主题主字体是 Roboto 等拉丁字体,不含汉字;不显式给出回退链时,
+  /// 中文由 Skia 按 locale 自行挑选,可能出现简繁/粗细混排。这里固定
+  /// 中文回退到各平台的系统界面字体,拉丁字形仍由主字体负责。
+  static const List<String> cjkFontFamilyFallback = <String>[
+    'Microsoft YaHei UI', // Windows
+    'Microsoft YaHei',
+    'PingFang SC', // macOS
+    'Noto Sans CJK SC', // Linux / Android
+    'Noto Sans SC',
+    'Source Han Sans SC',
+  ];
+
   /// 浅色主题。
   static ThemeData get light => _build(Brightness.light);
 
   /// 深色主题。
   static ThemeData get dark => _build(Brightness.dark);
 
-  static ThemeData _build(Brightness brightness) {
+  /// 带全局字体的浅色主题;[fontFamily] 为 null 时使用系统默认字体。
+  static ThemeData lightWithFont(String? fontFamily) =>
+      _build(Brightness.light, fontFamily: fontFamily);
+
+  /// 带全局字体的深色主题;[fontFamily] 为 null 时使用系统默认字体。
+  static ThemeData darkWithFont(String? fontFamily) =>
+      _build(Brightness.dark, fontFamily: fontFamily);
+
+  static ThemeData _build(Brightness brightness, {String? fontFamily}) {
     var scheme = ColorScheme.fromSeed(
       seedColor: seedColor,
       brightness: brightness,
@@ -50,6 +72,9 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      fontFamily: fontFamily,
+      // 中文固定走系统界面字体,避免运行时随机回退导致中英混排风格不一致。
+      fontFamilyFallback: cjkFontFamilyFallback,
       scaffoldBackgroundColor: brightness == Brightness.dark
           ? scheme.surface
           : null,

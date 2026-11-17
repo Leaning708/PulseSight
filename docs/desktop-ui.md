@@ -35,9 +35,14 @@
 | 监视器 | 居中 `ConnectionSection`(红心 + bpm 大字 + 状态胶囊 + 连接按钮) |
 | 显示端 | `DisplayTogglesSection`(各显示端开关 + OBS 地址) |
 | 悬浮窗样式 | `OverlayStylePane`(左预览固定 + 右分组控件滚动) |
+| 设置 | `GlobalFontSection`(全局字体) |
 
 模拟场景(低 / 中 / 高)不单独成页,位于连接弹窗内,由
 `connection_primary_button` 打开。
+
+窄布局不显示左侧导航栏:右上角齿轮(`open_settings_button`)以
+`SettingsPage` 路由打开同一设置区块,页面 `Key('settings_page')`。
+左侧导航栏底部不再放置 BLE 使用提示小字。
 
 ### sections 文件组织
 
@@ -65,13 +70,52 @@ sections/
 | 组 | 内容 |
 | --- | --- |
 | 尺寸与布局 | 心形 / 数字大小、间距、心率与背景板透明度、背景板宽高、数字位置、bpm 标签开关 |
-| 颜色 | 背景板 / 心脏 / 心电图 / 文字四组预设色板(含自定义色) |
+| 颜色 | 背景板 / 心形 / 心电图 / 文字四组预设色板(含自定义色) |
 | 图表 | 折线图开关、采集时长、折线图高度、图表间距、折线图颜色 |
 | 动效与文字 | 心形 / 文字律动、辉光透明度与半径、心电图样式、字重、字体 |
 
 - 滑块行(`_StyleSlider`)尾部常驻实时数值,拖动提示与静态显示一致;
 - 预览与控件并排的最小宽度为 `overlayStyleSideBySideMinWidth`(560),
   桌面样式页左列预览(260×330)固定不随右侧控件滚动。
+
+## 全局字体
+
+「设置」页提供全局字体(系统默认 / 系统已安装字体族,桌面端经
+`pulsesight/fonts` 通道枚举;其他平台列表为空,只有系统默认):
+
+- 持久化:`SettingsKeys.globalFontFamily`(`app.font_family`,字符串;
+  未设置 = 系统默认)。由 `HomeViewModel.globalFontFamily` 读写。
+- 应用界面:`main.dart` 用 `AppTheme.lightWithFont` / `darkWithFont`
+  把字体写进 `ThemeData`(`fontFamily` 会应用到整套 `TextTheme`),
+  切换后 `Consumer<HomeViewModel>` 重建 `MaterialApp` 立即生效。
+- 悬浮窗:`OverlayStyle.textFontFamily` 为空表示**跟随全局字体**
+  (`HomeViewModel.resolvedOverlayStyle` 负责补全),仅显式选择的字体
+  优先于全局;下发给桌面悬浮窗 / Android / OBS 的样式都是补全后的
+  生效样式,样式页预览同样使用生效样式。样式页字体下拉的默认项文案为
+  「跟随全局(当前字体名)」。
+- 修改全局字体不需要改动各显示端服务:VM 会重新 `setStyle` 已解析的样式。
+
+## 语言与中文渲染
+
+中文在 Windows 上「粗细不一 / 混入繁体字形」的根因是语言环境,与字体选择是
+两件事,本项目两者都做了约束:
+
+- `WidgetsApp.supportedLocales` 默认只有 `en_US`;不显式配置时,即使系统语言
+  是中文,`Localizations.localeOf` 也解析为 `en_US`。文本整形与字体回退按该
+  locale 进行,可能混入繁体/日文字形或出现粗细不一致。
+- `MaterialApp` 配置 `AppLocalization.delegates` / `supportedLocales`
+  (`lib/ui/core/localization/app_localization.dart`):支持 `zh_CN` 与 `en`,
+  简体中文优先,繁体中文系统回落到简体。
+- 代理取自 `material_ui` 导出的 `GlobalMaterialLocalizations.delegates`
+  (Material / Cupertino / Widgets 三层):`material_ui` 自带一份 Material
+  实现,必须使用与它类型匹配的代理;`flutter_localizations` 的同名类类型不同,
+  直接使用会触发「locale 不被所有 delegate 支持」的告警。
+- 主题层叠加 `AppTheme.cjkFontFamilyFallback`
+  (`Microsoft YaHei UI` → `PingFang SC` → `Noto Sans CJK SC` → `Noto Sans SC`
+  → `Source Han Sans SC`):中文固定到各平台系统界面字体,避免 Skia 运行时
+  随机挑选;拉丁字形仍由主字体(默认 Roboto 或用户选的全局字体)负责。
+  因此全局字体选了纯拉丁字体(如 Segoe UI)时,只有拉丁字形变化,中文仍走
+  上面的回退链——这是预期行为。
 
 ## 主题体系
 

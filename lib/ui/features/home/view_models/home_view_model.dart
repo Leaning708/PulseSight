@@ -86,6 +86,9 @@ class HomeViewModel extends ChangeNotifier {
 
   ThemeMode _themeMode = ThemeMode.system;
 
+  /// 全局字体族;null = 系统默认。应用界面与悬浮窗的默认字体。
+  String? _globalFontFamily;
+
   /// 模拟场景能力;真实模式下隐藏场景 UI。
   HeartRateScenarioSource? _scenarioSource;
 
@@ -132,6 +135,9 @@ class HomeViewModel extends ChangeNotifier {
   /// 界面主题模式(跟随系统 / 浅色 / 深色)。
   ThemeMode get themeMode => _themeMode;
 
+  /// 全局字体族;null = 系统默认。
+  String? get globalFontFamily => _globalFontFamily;
+
   /// 当前是否为模拟模式。
   bool get isSimulatedMode => _mode == HeartRateMode.simulated;
 
@@ -171,8 +177,17 @@ class HomeViewModel extends ChangeNotifier {
   /// 悬浮窗显示样式。
   OverlayStyle get overlayStyle => _overlayStyle;
 
-  /// 系统已安装字体族列表(懒加载)。
-  List<String> get overlayFontFamilies => _fontList.fontFamilies;
+  /// 实际生效的悬浮窗样式:未单独指定字体时补上全局字体。
+  OverlayStyle get resolvedOverlayStyle {
+    final global = _globalFontFamily;
+    if (global == null || _overlayStyle.textFontFamily != null) {
+      return _overlayStyle;
+    }
+    return _overlayStyle.copyWith(textFontFamily: global);
+  }
+
+  /// 系统已安装字体族列表(懒加载);全局字体与悬浮窗字体下拉共用。
+  List<String> get fontFamilies => _fontList.fontFamilies;
 
   /// 是否可以发起连接(未连接时)。
   bool get canConnect => _connection == HeartRateConnection.disconnected;
@@ -320,6 +335,7 @@ class HomeViewModel extends ChangeNotifier {
       (mode) => mode.name == values[SettingsKeys.themeMode],
       orElse: () => ThemeMode.system,
     );
+    _globalFontFamily = values[SettingsKeys.globalFontFamily] as String?;
     _desktopOverlayEnabled =
         (values[SettingsKeys.desktopOverlayEnabled] as bool?) ?? false;
     _mousePassthroughEnabled =
@@ -398,7 +414,7 @@ class HomeViewModel extends ChangeNotifier {
     // 恢复上次会话开启的显示端(Android 悬浮窗需手动开启)。
     if (_desktopOverlayEnabled) {
       await _desktopOverlay?.show(passthrough: _mousePassthroughEnabled);
-      await _desktopOverlay?.setStyle(_overlayStyle);
+      await _desktopOverlay?.setStyle(resolvedOverlayStyle);
     }
     if (_menubarEnabled) {
       await _menubar?.setEnabled(true);
@@ -410,12 +426,12 @@ class HomeViewModel extends ChangeNotifier {
       // 端口被占用等启动失败时回落为关闭,不保留虚假的开启状态。
       final ok = await _obsOverlay?.setEnabled(true) ?? false;
       if (ok) {
-        await _obsOverlay?.setStyle(_overlayStyle);
+        await _obsOverlay?.setStyle(resolvedOverlayStyle);
       } else {
         _obsOverlayEnabled = false;
       }
     }
-    await _androidDisplay?.setStyle(_overlayStyle);
+    await _androidDisplay?.setStyle(resolvedOverlayStyle);
     _heartRateHistory.maxLength = _overlayStyle.chartSampleCount;
     notifyListeners();
 
@@ -566,6 +582,16 @@ class HomeViewModel extends ChangeNotifier {
     await _settings.setValue(SettingsKeys.themeMode, mode.name);
   }
 
+  /// 设置全局字体(应用界面 + 悬浮窗默认字体)并持久化;null = 系统默认。
+  Future<void> setGlobalFontFamily(String? family) async {
+    if (_globalFontFamily == family) return;
+    _globalFontFamily = family;
+    notifyListeners();
+    await _settings.setValue(SettingsKeys.globalFontFamily, family);
+    // 悬浮窗字体未单独指定时随全局字体变化,重新下发生效样式。
+    _pushOverlayStyle();
+  }
+
   /// 开关桌面悬浮窗(平台不支持时为空操作)。
   Future<void> setDesktopOverlayEnabled(bool value) async {
     if (!supportsDesktopOverlay) return;
@@ -639,7 +665,7 @@ class HomeViewModel extends ChangeNotifier {
     await _settings.setValue(SettingsKeys.obsOverlayEnabled, value);
     if (value) {
       // 服务缓存样式独立于启用时机,启用后立即对齐当前样式。
-      await _obsOverlay?.setStyle(_overlayStyle);
+      await _obsOverlay?.setStyle(resolvedOverlayStyle);
     }
     unawaited(_syncAppMenu());
     return true;
@@ -760,7 +786,7 @@ class HomeViewModel extends ChangeNotifier {
     persistOverlayStyle();
   }
 
-  /// 更新数字字体族并持久化;null 表示系统默认。
+  /// 更新数字字体族并持久化;null 表示跟随全局字体。
   void setOverlayTextFontFamily(String? family) {
     _applyOverlayStyle(
       _overlayStyle.copyWith(
@@ -878,9 +904,15 @@ class HomeViewModel extends ChangeNotifier {
     if (_overlayStyle == style) return;
     _overlayStyle = style;
     notifyListeners();
-    _desktopOverlay?.setStyle(style);
-    _androidDisplay?.setStyle(style);
-    _obsOverlay?.setStyle(style);
+    _pushOverlayStyle();
+  }
+
+  /// 把[实际生效的样式]推送到各显示端(字体已按全局设置补全)。
+  void _pushOverlayStyle() {
+    final effective = resolvedOverlayStyle;
+    _desktopOverlay?.setStyle(effective);
+    _androidDisplay?.setStyle(effective);
+    _obsOverlay?.setStyle(effective);
   }
 
   /// 将当前样式持久化。

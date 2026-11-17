@@ -142,7 +142,7 @@ class OverlayStyle {
   /// 数字字重(100 ~ 900,映射 FontWeight)。
   final double textWeight;
 
-  /// 数字字体族;null = 系统默认。
+  /// 数字字体族;null = 跟随全局字体设置(全局未设置时为系统默认)。
   final String? textFontFamily;
 
   /// 是否显示近期心率波动折线图。
@@ -185,7 +185,7 @@ class OverlayStyle {
   /// 复制并替换部分字段。
   ///
   /// [textFontFamily] 传 null 时保留原值(与其他可空字段一致);需要
-  /// 显式清空回"系统默认"时传 [clearTextFontFamily] 为 true。
+  /// 显式清空回「跟随全局字体」时传 [clearTextFontFamily] 为 true。
   OverlayStyle copyWith({
     double? heartSize,
     double? bpmFontSize,

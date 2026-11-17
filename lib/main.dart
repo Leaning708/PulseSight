@@ -21,6 +21,7 @@ import 'data/services/simulated_heart_rate_source.dart';
 import 'data/services/switchable_heart_rate_source.dart';
 import 'domain/models/heart_rate_mode.dart';
 import 'domain/models/heart_rate_scenario.dart';
+import 'ui/core/localization/app_localization.dart';
 import 'ui/core/theme/app_theme.dart';
 import 'ui/features/home/view_models/home_view_model.dart';
 import 'ui/features/home/views/home_view.dart';
@@ -195,8 +196,13 @@ class PulseSightApp extends StatelessWidget {
       builder: (_, viewModel, _) => MaterialApp(
         title: 'PulseSight',
         debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
+        // 语言必须显式声明:否则默认 supportedLocales 只有 en_US,
+        // 中文文本会按英文 locale 选择字形与回退字体。
+        localizationsDelegates: AppLocalization.delegates,
+        supportedLocales: AppLocalization.supportedLocales,
+        // 全局字体由设置页维护,同时作为悬浮窗字体的默认值。
+        theme: AppTheme.lightWithFont(viewModel.globalFontFamily),
+        darkTheme: AppTheme.darkWithFont(viewModel.globalFontFamily),
         // 主题模式由 HomeViewModel 持久化与切换。
         themeMode: viewModel.themeMode,
         home: HomeView(viewModel: viewModel),

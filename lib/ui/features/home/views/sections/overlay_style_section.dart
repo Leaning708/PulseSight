@@ -110,7 +110,7 @@ class OverlayStylePreview extends StatelessWidget {
           child: OverlayView(
             bpm: connected ? viewModel.bpm : null,
             connected: connected,
-            style: viewModel.overlayStyle,
+            style: viewModel.resolvedOverlayStyle,
             history: viewModel.heartRateHistory,
           ),
         ),
@@ -330,7 +330,7 @@ class OverlayStyleControls extends StatelessWidget {
     );
   }
 
-  /// 「颜色」组:背景板 / 心脏 / 心电图 / 文字的预设色板。
+  /// 「颜色」组:背景板 / 心形 / 心电图 / 文字的预设色板。
   Widget _colorGroup(BuildContext context, OverlayStyle style) {
     return _group(
       context,
@@ -345,7 +345,7 @@ class OverlayStyleControls extends StatelessWidget {
         ),
         _colorSwatchRow(
           context: context,
-          label: '心脏颜色',
+          label: '心形颜色',
           current: style.heartColor,
           presets: _heartColorSwatches,
           onPicked: viewModel.setOverlayHeartColor,
@@ -498,8 +498,15 @@ class OverlayStyleControls extends StatelessWidget {
           // Windows 字体族上百个,限制菜单高度避免全屏弹出。
           menuMaxHeight: 400,
           items: [
-            const DropdownMenuItem<String?>(value: null, child: Text('默认(系统)')),
-            ...viewModel.overlayFontFamilies.map(
+            // 未单独指定时跟随「设置 → 全局字体」,而非系统默认。
+            DropdownMenuItem<String?>(
+              value: null,
+              child: Text(
+                '跟随全局(${viewModel.globalFontFamily ?? '系统默认'})',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            ...viewModel.fontFamilies.map(
               (family) => DropdownMenuItem<String?>(
                 value: family,
                 child: Text(family, overflow: TextOverflow.ellipsis),
