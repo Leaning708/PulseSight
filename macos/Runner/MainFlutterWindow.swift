@@ -70,6 +70,12 @@ final class OverlayWindowSupport {
 }
 
 class MainFlutterWindow: NSWindow {
+  /// 交通灯(关闭 / 最小化 / 缩放)的左侧起点。
+  ///
+  /// 默认位置约为 7pt,而 Flutter 内容区左边距为 16pt、心形图标中心约在
+  /// 27pt。红绿灯半径约 7pt,起点取 20pt 时关闭按钮中心正好与心形对齐。
+  private let trafficLightLeadingInset: CGFloat = 20
+
   /// 菜单栏心率显示的 NSStatusItem。
   private var statusItem: NSStatusItem?
 
@@ -111,6 +117,55 @@ class MainFlutterWindow: NSWindow {
     setupAppearanceSync()
 
     super.awakeFromNib()
+
+    // window_manager 在启动后应用 hidden title bar,AppKit 会重新布局
+    // 交通灯;等下一轮 runloop 再对齐,并在窗口获得焦点 / 缩放 / 退出
+    // 全屏后重新校正。
+    DispatchQueue.main.async { [weak self] in
+      self?.alignTrafficLights()
+    }
+    for name in [
+      NSWindow.didBecomeKeyNotification,
+      NSWindow.didResizeNotification,
+      NSWindow.didExitFullScreenNotification,
+    ] {
+      NotificationCenter.default.addObserver(
+        self, selector: #selector(windowLayoutChanged(_:)),
+        name: name, object: self)
+    }
+  }
+
+  @objc private func windowLayoutChanged(_ notification: Notification) {
+    DispatchQueue.main.async { [weak self] in
+      self?.alignTrafficLights()
+    }
+  }
+
+  /// 将系统交通灯整体右移到内容区左边距,保持按钮之间的原始间距。
+  private func alignTrafficLights() {
+    // 全屏时系统会接管按钮位置,不再干预。
+    guard !styleMask.contains(.fullScreen),
+      let close = standardWindowButton(.closeButton),
+      let minimize = standardWindowButton(.miniaturizeButton),
+      let zoom = standardWindowButton(.zoomButton)
+    else { return }
+
+    let gap = minimize.frame.minX - close.frame.minX
+    guard gap > 0 else { return }
+    let y = close.frame.minY
+
+    if abs(close.frame.minX - trafficLightLeadingInset) > 0.5 {
+      close.setFrameOrigin(
+        NSPoint(x: trafficLightLeadingInset, y: y))
+    }
+    let minimizeX = trafficLightLeadingInset + gap
+    if abs(minimize.frame.minX - minimizeX) > 0.5 {
+      minimize.setFrameOrigin(NSPoint(x: minimizeX, y: minimize.frame.minY))
+    }
+    let zoomX = minimizeX + gap
+    if abs(zoom.frame.minX - zoomX) > 0.5 {
+      zoom.setFrameOrigin(NSPoint(x: zoomX, y: zoom.frame.minY))
+    }
   }
 
   /// 标题栏外观跟随应用主题模式。
@@ -328,5 +383,6 @@ class MainFlutterWindow: NSWindow {
     if let appearanceObserver {
       NotificationCenter.default.removeObserver(appearanceObserver)
     }
+    NotificationCenter.default.removeObserver(self)
   }
 }

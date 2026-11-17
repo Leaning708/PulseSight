@@ -211,3 +211,4 @@ abstract interface class HeartRateSource {
 4. **CocoaPods 必须与 Homebrew Ruby 大版本匹配**,旧 gem shim 会抢占 PATH。
 5. 鼠标穿透开启时,主窗口对一切鼠标事件透明(包括自动化工具的合成事件)— 自动化驱动前先关闭穿透。
 6. **蓝牙权限**:App Sandbox 必须勾选 Bluetooth(`com.apple.security.device.bluetooth`),否则 `adapterState` 一直是 `unauthorized`;`Info.plist` 需要 `NSBluetoothAlwaysUsageDescription`。首次扫描会弹系统授权,拒绝后要到「系统设置 → 隐私与安全性 → 蓝牙」重新打开。
+7. **交通灯位置**:隐藏标题栏后系统红绿灯默认贴左(约 7pt),与 Flutter 内容 16pt 边距不对齐。`MainFlutterWindow` 在启动、获得焦点、缩放与退出全屏后把三个标准按钮整体移到 20pt,使关闭按钮中心对准标题行心形图标中心;全屏时交给系统管理。

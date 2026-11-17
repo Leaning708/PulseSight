@@ -26,6 +26,7 @@
 
 ### Fixed
 
+- **macOS 左上角交通灯偏左**:隐藏标题栏后系统按钮仍停在约 7pt,与内容区间距不一致;`MainFlutterWindow` 统一右移到 20pt,使关闭按钮中心与标题行心形图标对齐,并在窗口缩放 / 退出全屏后重新校正
 - **断开后另一台设备无法连接**:断连改为 `queue: false` 绕过 FBP GATT 操作队列,避免排队的 disconnect 被卡住、直到 App 退出才释放物理链路
 - **Windows 控制台 AXTree 报错**:Flutter Windows 可访问性桥在「滚动列表 + Tooltip」组合下会刷 `Failed to update ui::AXTree`(flutter/flutter#182444)。窄布局改用 `SingleChildScrollView + Column`,Tooltip 外层增加语义边界以规避
 - **断开后无法重新扫描到手环**:小米手环在 GATT 断开后会停止广播设备名与 `0x180D` 服务标记(扫描结果仍在,但名称为空且不再声明心率服务),默认过滤会把它隐藏。现在持久化上次连接的设备 ID / 名称,按 ID 合并扫描结果并以「上次连接」标记展示,可直接重连,无需重新开关手环广播
