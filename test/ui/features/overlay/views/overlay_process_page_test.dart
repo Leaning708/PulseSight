@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -136,7 +137,13 @@ void main() {
 
     expect(callsTo('setAsFrameless'), isNotEmpty);
     expect(callsTo('setAlwaysOnTop'), isNotEmpty);
-    expect(callsTo('setSkipTaskbar'), isNotEmpty);
+    // macOS 没有任务栏概念,且调用 setSkipTaskbar 会让整个应用变为
+    // accessory(见 macOS 平台陷阱),因此只在 Windows 断言该调用。
+    if (Platform.isMacOS) {
+      expect(callsTo('setSkipTaskbar'), isEmpty);
+    } else {
+      expect(callsTo('setSkipTaskbar'), isNotEmpty);
+    }
     // 启动阶段仅置隐藏,等主进程下发 show 再显示。
     expect(callsTo('show'), isEmpty);
     expect(callsTo('hide'), isNotEmpty);
