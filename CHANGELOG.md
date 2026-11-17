@@ -25,6 +25,7 @@
 
 ### Fixed
 
+- **Windows 控制台 AXTree 报错**:Flutter Windows 可访问性桥在「滚动列表 + Tooltip」组合下会刷 `Failed to update ui::AXTree`(flutter/flutter#182444)。窄布局改用 `SingleChildScrollView + Column`,Tooltip 外层增加语义边界以规避
 - **断开后无法重新扫描到手环**:小米手环在 GATT 断开后会停止广播设备名与 `0x180D` 服务标记(扫描结果仍在,但名称为空且不再声明心率服务),默认过滤会把它隐藏。现在持久化上次连接的设备 ID / 名称,按 ID 合并扫描结果并以「上次连接」标记展示,可直接重连,无需重新开关手环广播
 - Windows 顶栏 ❤ 图标抽风(切到「显示端」必现、移入/移出带 tooltip 的按钮时闪现):根因是 Impeller(Windows)在帧内含 saveLayer(`Opacity` / `FadeTransition`)时把其它字形以错误变换光栅化。Windows runner 改用 Skia 后端(`ImpellerSwitch::Disabled`,与 macOS 一致),并从代码层去掉禁用行的 `Opacity` 图层。详见 `docs/troubleshooting.md` §10
 - 悬浮窗数据推送链路中断:`DesktopOverlayPage._handleMethodCall` 的 `update` 分支漏写 `break`,继续落入 `setPassthrough` 对 Map 做 `as bool` 强转抛 `TypeError`,副窗口不再刷新(永远显示灰心 `--`)。已补 `break` 并新增推送链路测试

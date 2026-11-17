@@ -125,21 +125,26 @@ class _ObsUrlRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.xs),
-        Tooltip(
-          message: '复制浏览器源地址',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(4),
-            onTap: () async {
-              await Clipboard.setData(ClipboardData(text: url));
-              if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(SnackBar(content: Text('已复制浏览器源地址:$url')));
-              }
-            },
-            child: Padding(
-              padding: EdgeInsets.all(AppSpacing.xs),
-              child: Icon(Icons.copy, size: 16, color: scheme.primary),
+        // Semantics 边界规避 Flutter Windows 的 AXTree 序列化错误
+        // (flutter/flutter#182444)。
+        Semantics(
+          container: true,
+          child: Tooltip(
+            message: '复制浏览器源地址',
+            child: InkWell(
+              borderRadius: BorderRadius.circular(4),
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(SnackBar(content: Text('已复制浏览器源地址:$url')));
+                }
+              },
+              child: Padding(
+                padding: EdgeInsets.all(AppSpacing.xs),
+                child: Icon(Icons.copy, size: 16, color: scheme.primary),
+              ),
             ),
           ),
         ),

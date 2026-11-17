@@ -240,6 +240,26 @@ rm -rf ~/.gradle/wrapper/dists/gradle-<版本>-<type>
 
 `flutter test` 正常,但含 `tester.runAsync` + 图片捕获的 widget 测试在特定场景会挂起 — 已移除该类测试(改用纯逻辑断言)。若新增卡住,检查是否在 widget 测试中用了 `toImage`。
 
+### Windows 控制台:`Failed to update ui::AXTree ...`
+
+完整日志形如:
+
+```text
+[ERROR:flutter/shell/platform/common/accessibility_bridge.cc(114)]
+Failed to update ui::AXTree, error: 58 will not be in the tree and is not the new root
+```
+
+这是 Flutter Windows 可访问性桥(UIA)的已知引擎问题
+[flutter/flutter#182444](https://github.com/flutter/flutter/issues/182444),
+不是本项目的 Dart 异常。典型触发条件是「滚动列表 + Tooltip」:鼠标在
+Tooltip 之间移动时,引擎把已移除的 tooltip overlay 节点仍当作子节点序列化。
+
+- 多数情况下只是控制台日志,界面功能不受影响;
+- 但在 release 构建中,已出现同一树状态导致窗口缩放时进程崩溃的报告;
+- 本项目已做规避:窄布局由 `ListView` 改为 `SingleChildScrollView + Column`,
+  两处 `Tooltip` 外层增加 `Semantics(container: true)` 语义边界;
+- 根因在 Flutter 引擎,升级到修复该 issue 的 Flutter 版本后可按需移除规避。
+
 ## 其他
 
 ### Flutter 3.50 特有

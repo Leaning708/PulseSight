@@ -62,43 +62,49 @@ class _NarrowHomeBody extends StatelessWidget {
             constraints: const BoxConstraints(maxWidth: homeNarrowMaxWidth),
             child: ListenableBuilder(
               listenable: viewModel,
-              builder: (context, _) => ListView(
+              // 设置页子项数量固定,用 Column 而非 ListView:Flutter Windows 的
+              // 可访问性桥在「ListView + Tooltip」组合下会刷
+              // 「Failed to update ui::AXTree」错误(flutter/flutter#182444)。
+              builder: (context, _) => SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                children: [
-                  const SizedBox(height: AppSpacing.xxl),
-                  ConnectionSection(viewModel: viewModel),
-                  if (viewModel.supportsScenario) ...[
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
                     const SizedBox(height: AppSpacing.xxl),
-                    _sectionHeader(context, Icons.speed_outlined, '模拟心率场景'),
-                    const SizedBox(height: AppSpacing.md),
-                    ScenarioSection(viewModel: viewModel),
-                  ],
-                  const SizedBox(height: AppSpacing.xxl),
-                  const Divider(),
-                  const SizedBox(height: AppSpacing.xs),
-                  DisplayTogglesSection(viewModel: viewModel),
-                  if (viewModel.supportsDesktopOverlay ||
-                      viewModel.supportsAndroidDisplay) ...[
-                    const SizedBox(height: AppSpacing.sm),
+                    ConnectionSection(viewModel: viewModel),
+                    if (viewModel.supportsScenario) ...[
+                      const SizedBox(height: AppSpacing.xxl),
+                      _sectionHeader(context, Icons.speed_outlined, '模拟心率场景'),
+                      const SizedBox(height: AppSpacing.md),
+                      ScenarioSection(viewModel: viewModel),
+                    ],
+                    const SizedBox(height: AppSpacing.xxl),
                     const Divider(),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      '悬浮窗样式',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(
-                      '更改实时生效并自动保存(需打开上方悬浮窗开关查看)',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    const SizedBox(height: AppSpacing.xs),
+                    DisplayTogglesSection(viewModel: viewModel),
+                    if (viewModel.supportsDesktopOverlay ||
+                        viewModel.supportsAndroidDisplay) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      const Divider(),
+                      const SizedBox(height: AppSpacing.sm),
+                      Text(
+                        '悬浮窗样式',
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
-                    ),
-                    const SizedBox(height: AppSpacing.md),
-                    OverlayStyleSection(viewModel: viewModel),
+                      Text(
+                        '更改实时生效并自动保存(需打开上方悬浮窗开关查看)',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      OverlayStyleSection(viewModel: viewModel),
+                    ],
+                    const SizedBox(height: AppSpacing.xxl),
+                    _footnote(context),
+                    const SizedBox(height: AppSpacing.xxl),
                   ],
-                  const SizedBox(height: AppSpacing.xxl),
-                  _footnote(context),
-                  const SizedBox(height: AppSpacing.xxl),
-                ],
+                ),
               ),
             ),
           ),
@@ -641,27 +647,32 @@ class _ThemeModeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mode = viewModel.themeMode;
-    return IconButton(
-      key: const Key('theme_mode_button'),
-      visualDensity: VisualDensity.compact,
-      tooltip: switch (mode) {
-        ThemeMode.system => '主题:跟随系统',
-        ThemeMode.light => '主题:浅色',
-        ThemeMode.dark => '主题:深色',
-      },
-      icon: Icon(switch (mode) {
-        ThemeMode.system => Icons.brightness_auto_outlined,
-        ThemeMode.light => Icons.light_mode_outlined,
-        ThemeMode.dark => Icons.dark_mode_outlined,
-      }),
-      onPressed: () {
-        final next = switch (viewModel.themeMode) {
-          ThemeMode.system => ThemeMode.light,
-          ThemeMode.light => ThemeMode.dark,
-          ThemeMode.dark => ThemeMode.system,
-        };
-        viewModel.setThemeMode(next);
-      },
+    // Semantics 边界用于规避 Flutter Windows 的 AXTree 序列化错误
+    // (flutter/flutter#182444):Tooltip 的 overlay 节点需要独立语义边界。
+    return Semantics(
+      container: true,
+      child: IconButton(
+        key: const Key('theme_mode_button'),
+        visualDensity: VisualDensity.compact,
+        tooltip: switch (mode) {
+          ThemeMode.system => '主题:跟随系统',
+          ThemeMode.light => '主题:浅色',
+          ThemeMode.dark => '主题:深色',
+        },
+        icon: Icon(switch (mode) {
+          ThemeMode.system => Icons.brightness_auto_outlined,
+          ThemeMode.light => Icons.light_mode_outlined,
+          ThemeMode.dark => Icons.dark_mode_outlined,
+        }),
+        onPressed: () {
+          final next = switch (viewModel.themeMode) {
+            ThemeMode.system => ThemeMode.light,
+            ThemeMode.light => ThemeMode.dark,
+            ThemeMode.dark => ThemeMode.system,
+          };
+          viewModel.setThemeMode(next);
+        },
+      ),
     );
   }
 }
