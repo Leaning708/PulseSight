@@ -260,19 +260,42 @@ rm -rf ~/.gradle/wrapper/dists/gradle-<版本>-<type>
 
 ```text
 [ERROR:flutter/shell/platform/common/accessibility_bridge.cc(114)]
-Failed to update ui::AXTree, error: 58 will not be in the tree and is not the new root
+Failed to update ui::AXTree, error: 31 will not be in the tree and is not the new root
 ```
 
-这是 Flutter Windows 可访问性桥(UIA)的已知引擎问题
-[flutter/flutter#182444](https://github.com/flutter/flutter/issues/182444),
-不是本项目的 Dart 异常。典型触发条件是「滚动列表 + Tooltip」:鼠标在
-Tooltip 之间移动时,引擎把已移除的 tooltip overlay 节点仍当作子节点序列化。
+**`31` 不是错误码,而是一个语义节点 id**。可访问性桥把 Dart 端语义节点
+序列化成引擎的 `AXTreeUpdate` 时,若某个节点既不在本次更新里、也无法经由
+其它节点的子节点列表挂到根节点上,引擎就拒绝**整帧**更新并打印该日志
+(`AXTree::ComputePendingChangesToNode`),于是这一帧的语义树被整体丢弃,
+UIA 侧可能停留在空树/过期树上(有报告称同类树状态在 release 构建下会崩溃)。
 
-- 多数情况下只是控制台日志,界面功能不受影响;
-- 但在 release 构建中,已出现同一树状态导致窗口缩放时进程崩溃的报告;
-- 本项目已做规避:窄布局由 `ListView` 改为 `SingleChildScrollView + Column`,
+触发条件(按已确认的先后顺序):
+
+1. **隐藏挂载的 `OverlayPortal` 子树**(最典型:`Material Slider` 的值指示器、
+   `Tooltip`、`MenuAnchor`)。`OverlayPortal` 为覆盖层子节点设置了
+   `traversalParentIdentifier`;当锚点所在子树被隐藏(例如桌面布局中曾用
+   `IndexedStack` 保留的非选中详情页)时,该遍历父节点不存在,
+   覆盖层子节点就被序列化成没有父节点的孤儿节点。
+2. 滚动容器(旧版 `ListView`)+ `Tooltip` 组合,同样产出孤儿节点
+   ([flutter/flutter#182444](https://github.com/flutter/flutter/issues/182444))。
+
+本项目的规避方式:
+
+- 桌面详情面板**只构建当前选中页**,不再用 `IndexedStack` 挂载离屏页
+  (样式页有 12 个 `Slider`,正是孤儿节点的来源);
+- 窄布局用 `SingleChildScrollView + Column` 而非 `ListView`,
   两处 `Tooltip` 外层增加 `Semantics(container: true)` 语义边界;
-- 根因在 Flutter 引擎,升级到修复该 issue 的 Flutter 版本后可按需移除规避。
+- 新增界面时避免在隐藏/离屏子树里挂载 `Slider`、`Tooltip`、`MenuAnchor`
+  等使用 `OverlayPortal` 的控件;
+- 守护测试:`test/ui/features/home/views/home_view_semantics_test.dart`
+  以「非选中页不构建 + 语义树无孤儿节点」断言该行为。
+
+根因在 Flutter 引擎/框架侧(框架修复
+[flutter/flutter#190431](https://github.com/flutter/flutter/pull/190431),
+引擎侧 PR 仍未合入稳定版),升级到包含修复的 Flutter 版本后可按需放宽上述规避。
+
+> 日志条数 = 启动次数:每次启动(或 hot restart)都会重新发送首帧语义树,
+> 因此看到两条相同的 `error: 31` 说明应用被启动了两次,并非持续刷屏。
 
 ## 其他
 

@@ -147,7 +147,7 @@ const EdgeInsets _panePadding = EdgeInsets.fromLTRB(
   AppSpacing.xxl,
 );
 
-/// 桌面设置式布局主体:顶栏 + 左侧导航栏 + 右侧详情面板(IndexedStack)。
+/// 桌面设置式布局主体:顶栏 + 左侧导航栏 + 右侧详情面板(一次只构建当前页)。
 class _DesktopHomeBody extends StatefulWidget {
   const _DesktopHomeBody({required this.viewModel});
 
@@ -161,7 +161,7 @@ class _DesktopHomeBodyState extends State<_DesktopHomeBody> {
   /// 当前选中的导航索引;默认停留在「监视器」页。
   int _selectedIndex = 0;
 
-  /// 当前平台可用的导航条目,顺序与详情面板的 IndexedStack 子项一致。
+  /// 当前平台可用的导航条目,顺序与详情面板索引一致。
   List<_DesktopNavEntry> _entries() {
     final vm = widget.viewModel;
     final showDisplayPanel =
@@ -218,15 +218,14 @@ class _DesktopHomeBodyState extends State<_DesktopHomeBody> {
                 ),
                 const VerticalDivider(width: 1),
                 Expanded(
-                  child: IndexedStack(
-                    index: _selectedIndex,
-                    children: [
-                      for (final entry in entries)
-                        KeyedSubtree(
-                          key: Key('desktop_pane_${entry.keyName}'),
-                          child: entry.pane,
-                        ),
-                    ],
+                  // 只构建当前选中的详情页。非选中页若保持挂载,页内 Material
+                  // Slider 的值指示器 OverlayPortal 会在隐藏状态下产出找不到
+                  // 遍历父节点的语义节点,引擎会因此整体拒绝该帧的 AXTree
+                  // 更新,控制台刷「Failed to update ui::AXTree」
+                  // (flutter/flutter#189902、#182444)。
+                  child: KeyedSubtree(
+                    key: Key('desktop_pane_${entries[_selectedIndex].keyName}'),
+                    child: entries[_selectedIndex].pane,
                   ),
                 ),
               ],

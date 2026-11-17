@@ -10,7 +10,7 @@
 
 | 窗口宽度 | 布局 | 结构 |
 | --- | --- | --- |
-| `≥ desktopBreakpoint`(720) | 桌面设置式布局 | 顶部栏(品牌 + 状态胶囊 + 主题切换)+ 左侧导航栏 200px + 右侧详情面板(IndexedStack 按导航切换) |
+| `≥ desktopBreakpoint`(720) | 桌面设置式布局 | 顶部栏(品牌 + 状态胶囊 + 主题切换)+ 左侧导航栏 200px + 右侧详情面板(按导航切换,一次只构建当前页) |
 | `< 720` | 窄布局(手机形态) | `AppBar` + 单列 `ListView`,结构与旧版保持一致 |
 
 - 断点、导航栏宽度与详情面板内容宽度上限定义在
@@ -20,7 +20,11 @@
   widget 测试据此断言;导航栏为 `Key('desktop_nav_rail')`,条目为
   `Key('desktop_nav_<monitor|scenario|display|style>')`,详情面板为
   `Key('desktop_pane_<...>')`。
-- 详情面板用 `IndexedStack` 承载:切页保留各页滚动位置与控件状态。
+- 详情面板**只构建当前选中的那一页**,切页时旧页被销毁:离屏挂载的
+  Material `Slider` 会创建 `OverlayPortal` 值指示器语义节点,这些节点在
+  隐藏状态下失去父节点,会让 Flutter 引擎整体拒绝该帧的语义树更新
+  (控制台刷 `Failed to update ui::AXTree`,见
+  [troubleshooting.md](troubleshooting.md) 的「Windows 控制台」一节)。
 
 ### 导航条目与详情面板
 
@@ -29,9 +33,11 @@
 | 条目 | 面板内容 |
 | --- | --- |
 | 监视器 | 居中 `ConnectionSection`(红心 + bpm 大字 + 状态胶囊 + 连接按钮) |
-| 模拟场景 | `ScenarioSection`(低 / 中 / 高切换) |
 | 显示端 | `DisplayTogglesSection`(各显示端开关 + OBS 地址) |
 | 悬浮窗样式 | `OverlayStylePane`(左预览固定 + 右分组控件滚动) |
+
+模拟场景(低 / 中 / 高)不单独成页,位于连接弹窗内,由
+`connection_primary_button` 打开。
 
 ### sections 文件组织
 
