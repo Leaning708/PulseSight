@@ -64,7 +64,7 @@ SwitchableHeartRateSource(真实 BLE / 模拟,互斥)
 - **记住上次设备**:小米手环在 GATT 断开后会停止广播设备名与 `0x180D` 服务标记(扫描包变成空名称、无心率服务),但系统侧设备 ID 仍可直接重连。应用把上次连接的设备 ID / 名称持久化(`ble.last_device_id` / `ble.last_device_name`),扫描结果按 ID 合并并把名称补回,以「上次连接」标记显示;即使广播包不再带心率服务,也可点击直接重连,无需在手环上重新开启心率广播
 - **错误提示**:蓝牙未开启 / 未授权、未找到心率服务、连接超时等经能力接口的错误流送到 `HomeViewModel.connectionError`,主界面直接展示
 - **权限**:macOS 需要 App Sandbox 的 `com.apple.security.device.bluetooth` 与 `NSBluetoothAlwaysUsageDescription`;Android 需要 `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`(API 31+)及旧版蓝牙 / 定位权限;插件在首次扫描时触发系统授权
-- **真实 / 模拟模式切换**:`SwitchableHeartRateSource` 同时持有两个数据源,通过 `HeartRateModeSource` 暴露当前模式与切换方法。切换时先同步摘除旧源的事件转发,再异步断开旧源物理链路并接入新源,保证任意时刻只有一路数据;模式持久化在 `heart_rate.mode`,主界面分段选择器切换,模拟模式下自动开始模拟并显示场景入口。`--dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true` 仅作为无历史设置时的初始默认值
+- **真实 / 模拟模式切换**:`SwitchableHeartRateSource` 同时持有两个数据源,通过 `HeartRateModeSource` 暴露当前模式与切换方法。切换时先同步摘除旧源的事件转发,再异步断开旧源物理链路并接入新源,保证任意时刻只有一路数据;模式持久化在 `heart_rate.mode`,主界面分段选择器切换,模拟模式下自动开始模拟,并在连接按钮下方内联展示低 / 中 / 高三档场景选择。`--dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true` 仅作为无历史设置时的初始默认值
 
 ## 模拟心率场景(HeartRateScenario)
 

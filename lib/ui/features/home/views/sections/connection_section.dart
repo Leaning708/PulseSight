@@ -10,6 +10,7 @@ import '../../../../core/widgets/heartbeat_heart.dart';
 import '../../../../core/widgets/status_pill.dart';
 import '../../view_models/home_view_model.dart';
 import '../device_picker_dialog.dart';
+import 'scenario_section.dart';
 
 /// 连接状态的展示文案;[simulated] 为真时标注模拟数据源。
 String connectionStatusLabel(
@@ -150,6 +151,10 @@ class ConnectionSection extends StatelessWidget {
             connectionButtonLabel(viewModel.connection, simulated: simulated),
           ),
         ),
+        if (viewModel.supportsScenario) ...[
+          const SizedBox(height: AppSpacing.lg),
+          ScenarioSection(viewModel: viewModel),
+        ],
       ],
     );
   }

@@ -108,7 +108,8 @@ void main() {
       expect(find.byKey(const Key('home_narrow_layout')), findsOneWidget);
       expect(find.byKey(const Key('home_desktop_layout')), findsNothing);
       expect(find.text('PulseSight'), findsOneWidget);
-      expect(find.text('模拟心率场景'), findsOneWidget);
+      expect(find.text('开始模拟'), findsOneWidget);
+      expect(find.text('低'), findsOneWidget);
     });
 
     testWidgets('宽窗口渲染桌面设置式布局(导航栏 + 监视器默认页)', (tester) async {
@@ -116,11 +117,12 @@ void main() {
 
       expect(find.byKey(const Key('home_desktop_layout')), findsOneWidget);
       expect(find.byKey(const Key('home_narrow_layout')), findsNothing);
-      // 导航栏与四个条目齐全。
+      // 导航栏与三个条目齐全,模拟场景不再单独成页。
       expect(find.byKey(const Key('desktop_nav_rail')), findsOneWidget);
-      for (final name in ['monitor', 'scenario', 'display', 'style']) {
+      for (final name in ['monitor', 'display', 'style']) {
         expect(find.byKey(Key('desktop_nav_$name')), findsOneWidget);
       }
+      expect(find.byKey(const Key('desktop_nav_scenario')), findsNothing);
       // 默认停留在监视器页:连接按钮可见,其余详情面板离屏不渲染。
       expect(find.byKey(const Key('desktop_pane_monitor')), findsOneWidget);
       expect(find.text('开始模拟'), findsOneWidget);
@@ -158,13 +160,6 @@ void main() {
       expect(find.byKey(const Key('desktop_pane_display')), findsOneWidget);
       expect(find.byKey(const Key('desktop_pane_monitor')), findsNothing);
       expect(find.byType(SettingRow), findsWidgets);
-
-      await tester.tap(find.byKey(const Key('desktop_nav_scenario')));
-      await tester.pump();
-      expect(find.byKey(const Key('desktop_pane_scenario')), findsOneWidget);
-      expect(find.text('低'), findsOneWidget);
-      expect(find.text('中'), findsOneWidget);
-      expect(find.text('高'), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('desktop_nav_style')));
       await tester.pump();
@@ -332,7 +327,10 @@ void main() {
 
       expect(viewModel.isSimulatedMode, isTrue);
       expect(find.text('停止模拟'), findsOneWidget);
-      expect(find.text('模拟心率场景'), findsOneWidget);
+      // 三档场景直接排在连接按钮下方。
+      expect(find.text('低'), findsOneWidget);
+      expect(find.text('中'), findsOneWidget);
+      expect(find.text('高'), findsOneWidget);
 
       await tester.tap(find.text('真实设备'));
       await tester.pump();
@@ -340,7 +338,9 @@ void main() {
 
       expect(viewModel.isSimulatedMode, isFalse);
       expect(find.text('连接设备'), findsOneWidget);
-      expect(find.text('模拟心率场景'), findsNothing);
+      expect(find.text('低'), findsNothing);
+      expect(find.text('中'), findsNothing);
+      expect(find.text('高'), findsNothing);
       expect(realSource.calls, contains('disconnect'));
     });
   });

@@ -195,11 +195,11 @@ App Sandbox 必须包含 `com.apple.security.device.bluetooth`(已配置在
 - 走出蓝牙范围会触发自动重连(1s / 2s / 4s 三次),全部失败后主界面显示错误;
 - macOS 的 BLE 在长时间挂起后可能进入异常状态,关闭再打开系统蓝牙可恢复。
 
-### 模拟模式没有场景入口
+### 模拟模式没有低 / 中 / 高选项
 
-模拟数据源只在启动时通过
-`flutter run -d macos --dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true`
-开启;默认连接真实设备,因此「模拟心率场景」导航不显示。
+三档场景只在**模拟模式**下显示,位置在连接按钮下方(不再单独占一个导航页)。
+默认是真实设备模式:在主界面顶部切到「模拟模式」,或首次启动时使用
+`flutter run -d macos --dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true`。
 
 ## Android 端
 

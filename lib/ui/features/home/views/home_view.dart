@@ -11,7 +11,6 @@ import 'sections/connection_section.dart';
 import 'sections/display_toggles_section.dart';
 import 'sections/overlay_style_pane.dart';
 import 'sections/overlay_style_section.dart';
-import 'sections/scenario_section.dart';
 
 /// 主界面:连接管理 + 各显示端开关。
 ///
@@ -72,12 +71,6 @@ class _NarrowHomeBody extends StatelessWidget {
                   children: [
                     const SizedBox(height: AppSpacing.xxl),
                     ConnectionSection(viewModel: viewModel),
-                    if (viewModel.supportsScenario) ...[
-                      const SizedBox(height: AppSpacing.xxl),
-                      _sectionHeader(context, Icons.speed_outlined, '模拟心率场景'),
-                      const SizedBox(height: AppSpacing.md),
-                      ScenarioSection(viewModel: viewModel),
-                    ],
                     const SizedBox(height: AppSpacing.xxl),
                     const Divider(),
                     const SizedBox(height: AppSpacing.xs),
@@ -110,18 +103,6 @@ class _NarrowHomeBody extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-
-  /// 区块标题行(图标 + 标题)。
-  Widget _sectionHeader(BuildContext context, IconData icon, String title) {
-    final scheme = Theme.of(context).colorScheme;
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: scheme.onSurfaceVariant),
-        const SizedBox(width: AppSpacing.sm),
-        Text(title, style: Theme.of(context).textTheme.titleMedium),
-      ],
     );
   }
 }
@@ -195,13 +176,6 @@ class _DesktopHomeBodyState extends State<_DesktopHomeBody> {
         label: '监视器',
         pane: _MonitorPane(viewModel: vm),
       ),
-      if (vm.supportsScenario)
-        _DesktopNavEntry(
-          keyName: 'scenario',
-          icon: Icons.speed_outlined,
-          label: '模拟场景',
-          pane: _ScenarioPane(viewModel: vm),
-        ),
       if (showDisplayPanel)
         _DesktopNavEntry(
           keyName: 'display',
@@ -408,34 +382,6 @@ class _MonitorPane extends StatelessWidget {
   }
 }
 
-/// 「模拟场景」详情页。
-class _ScenarioPane extends StatelessWidget {
-  const _ScenarioPane({required this.viewModel});
-
-  final HomeViewModel viewModel;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: _panePadding,
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: desktopPaneMaxWidth),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _paneHeader(context, '模拟心率场景', '切换模拟数据源的目标心率区间'),
-              const SizedBox(height: AppSpacing.lg),
-              ScenarioSection(viewModel: viewModel),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 「显示端」详情页。
 class _DisplayPane extends StatelessWidget {
   const _DisplayPane({required this.viewModel});
 
