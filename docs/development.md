@@ -25,7 +25,7 @@ flutter build apk --debug  # Android(需 SDK)
 ### 蓝牙心率设备调试
 
 - 默认数据源连接真实设备:在设备上开启「心率广播」→ 应用点「连接设备」→ 选择设备。扫描结果按「心率广播设备优先 + RSSI 降序」排序,弹窗可切换「显示全部蓝牙设备」
-- 真实 / 模拟模式在主界面分段选择器切换,二者互斥;`PULSESIGHT_SIMULATE_HEART_RATE=true` 只作为**没有历史设置时**的初始默认模式
+- 在「连接设备」弹窗底部选择「使用模拟数据」进入模拟模式,点击「停止模拟」回到真实设备;两种模式互斥。`PULSESIGHT_SIMULATE_HEART_RATE=true` 只作为**没有历史设置时**的初始默认模式
 - macOS:App Sandbox 已勾选 Bluetooth,`Info.plist` 已声明用途说明;首次扫描会弹系统授权。若误点拒绝,到「系统设置 → 隐私与安全性 → 蓝牙」重新打开
 - Android:Manifest 已声明 `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`(API 31+)与旧版蓝牙 / 定位权限;Android 11 及以下还需打开系统定位服务才能扫描 BLE
 - 手环同时只能被一个中心设备连接:若已连手机 App,先在手机端断开,或在手环上重新开启心率广播

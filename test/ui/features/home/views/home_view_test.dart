@@ -299,7 +299,7 @@ void main() {
   });
 
   group('真实 / 模拟模式 UI', () {
-    testWidgets('模式选择器互斥切换并联动场景入口', (tester) async {
+    testWidgets('通过连接弹窗进入模拟模式,停止后回到真实模式', (tester) async {
       final realSource = FakeRealHeartRateSource();
       final simulatedSource = SimulatedHeartRateSource(
         connectDelay: Duration.zero,
@@ -316,12 +316,20 @@ void main() {
         source: switchable,
       );
 
-      expect(find.byKey(const Key('heart_rate_mode_selector')), findsOneWidget);
-      expect(find.text('真实设备'), findsOneWidget);
-      expect(find.text('模拟模式'), findsOneWidget);
-      expect(find.text('开始模拟'), findsNothing);
+      expect(find.byKey(const Key('heart_rate_mode_selector')), findsNothing);
+      expect(find.text('连接设备'), findsOneWidget);
 
-      await tester.tap(find.text('模拟模式'));
+      await tester.tap(find.byKey(const Key('connection_primary_button')));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.byKey(const Key('device_picker_dialog')), findsOneWidget);
+      expect(
+        find.byKey(const Key('device_picker_use_simulation')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('device_picker_use_simulation')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -332,7 +340,7 @@ void main() {
       expect(find.text('中'), findsOneWidget);
       expect(find.text('高'), findsOneWidget);
 
-      await tester.tap(find.text('真实设备'));
+      await tester.tap(find.byKey(const Key('connection_primary_button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 

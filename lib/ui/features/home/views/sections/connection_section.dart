@@ -1,9 +1,6 @@
-import 'dart:async';
-
 import 'package:material_ui/material_ui.dart';
 
 import '../../../../../domain/models/heart_rate_connection.dart';
-import '../../../../../domain/models/heart_rate_mode.dart';
 import '../../../../core/theme/app_dimens.dart';
 import '../../../../core/widgets/bpm_display.dart';
 import '../../../../core/widgets/heartbeat_heart.dart';
@@ -64,29 +61,6 @@ class ConnectionSection extends StatelessWidget {
     final error = viewModel.connectionError;
     return Column(
       children: [
-        if (viewModel.supportsModeSwitch) ...[
-          SegmentedButton<HeartRateMode>(
-            key: const Key('heart_rate_mode_selector'),
-            segments: const [
-              ButtonSegment(
-                value: HeartRateMode.real,
-                icon: Icon(Icons.bluetooth),
-                label: Text('真实设备'),
-              ),
-              ButtonSegment(
-                value: HeartRateMode.simulated,
-                icon: Icon(Icons.science_outlined),
-                label: Text('模拟模式'),
-              ),
-            ],
-            selected: {viewModel.mode},
-            showSelectedIcon: false,
-            onSelectionChanged: viewModel.isSwitchingMode
-                ? null
-                : (selection) => unawaited(viewModel.setMode(selection.first)),
-          ),
-          const SizedBox(height: AppSpacing.xl),
-        ],
         HeartbeatHeart(size: 180, bpm: connected ? viewModel.bpm : null),
         const SizedBox(height: AppSpacing.lg),
         BpmDisplay(
@@ -137,9 +111,15 @@ class ConnectionSection extends StatelessWidget {
         ],
         const SizedBox(height: AppSpacing.lg),
         FilledButton.icon(
-          onPressed: viewModel.connection == HeartRateConnection.disconnected
-              ? () => _handleConnect(context)
-              : () => viewModel.disconnect(),
+          key: const Key('connection_primary_button'),
+          onPressed: switch (viewModel.connection) {
+            HeartRateConnection.disconnected => () => _handleConnect(context),
+            // 模拟模式的停止 / 取消同时退出模拟,回到真实设备模式。
+            HeartRateConnection.connecting || HeartRateConnection.connected =>
+              simulated
+                  ? () => viewModel.stopSimulation()
+                  : viewModel.disconnect,
+          },
           icon: Icon(
             viewModel.connection == HeartRateConnection.disconnected
                 ? simulated

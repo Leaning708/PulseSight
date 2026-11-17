@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../../domain/models/heart_rate_device.dart';
+import '../../../../domain/models/heart_rate_mode.dart';
 import '../../../core/theme/app_dimens.dart';
 import '../view_models/home_view_model.dart';
 
@@ -114,6 +115,23 @@ class _DevicePickerDialogState extends State<DevicePickerDialog> {
                           ),
                         ),
                 ),
+                if (viewModel.supportsModeSwitch) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    key: const Key('device_picker_use_simulation'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.science_outlined,
+                      color: scheme.primary,
+                    ),
+                    title: const Text('使用模拟数据'),
+                    subtitle: const Text('无设备时使用内置模拟心率'),
+                    onTap: () {
+                      unawaited(viewModel.setMode(HeartRateMode.simulated));
+                      Navigator.of(context).pop();
+                    },
+                  ),
+                ],
               ],
             ),
           ),

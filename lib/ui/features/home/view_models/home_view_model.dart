@@ -141,9 +141,6 @@ class HomeViewModel extends ChangeNotifier {
   /// 是否支持在真实设备与模拟模式之间切换。
   bool get supportsModeSwitch => _modeSource != null;
 
-  /// 是否正在切换模式。
-  bool get isSwitchingMode => _switchingMode;
-
   /// 是否支持模拟场景切换(仅模拟模式下展示)。
   bool get supportsScenario => isSimulatedMode && _scenarioSource != null;
 
@@ -472,6 +469,9 @@ class HomeViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// 停止模拟并回到真实设备模式。
+  Future<void> stopSimulation() => setMode(HeartRateMode.real);
 
   /// 开始设备扫描(打开设备选择弹窗时调用):清空旧结果与过滤条件。
   Future<void> beginDeviceScan() => _startDeviceScan(resetFilter: true);

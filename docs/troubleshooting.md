@@ -198,8 +198,8 @@ App Sandbox 必须包含 `com.apple.security.device.bluetooth`(已配置在
 ### 模拟模式没有低 / 中 / 高选项
 
 三档场景只在**模拟模式**下显示,位置在连接按钮下方(不再单独占一个导航页)。
-默认是真实设备模式:在主界面顶部切到「模拟模式」,或首次启动时使用
-`flutter run -d macos --dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true`。
+默认是真实设备模式:点击「连接设备」,在弹窗底部选择「使用模拟数据」;
+或首次启动时使用 `flutter run -d macos --dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true`。
 
 ## Android 端
 
