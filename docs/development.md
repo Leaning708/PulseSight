@@ -15,11 +15,21 @@
 ```bash
 flutter pub get            # 拉取依赖
 flutter analyze            # 静态分析(须零告警)
-flutter test               # 全部测试(46 个)
-flutter run -d macos       # macOS 调试运行(带控制台)
+flutter test               # 全部测试
+flutter run -d macos       # macOS 调试运行(连接真实 BLE 心率设备)
+flutter run -d macos --dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true  # 无设备时的模拟模式
 flutter build macos --debug
 flutter build apk --debug  # Android(需 SDK)
 ```
+
+### 蓝牙心率设备调试
+
+- 默认数据源连接真实设备:在设备上开启「心率广播」→ 应用点「连接设备」→ 选择设备。扫描结果按「心率广播设备优先 + RSSI 降序」排序,弹窗可切换「显示全部蓝牙设备」
+- 模拟模式只在启动时通过 `PULSESIGHT_SIMULATE_HEART_RATE=true` 开启;此时才显示「模拟心率场景」导航
+- macOS:App Sandbox 已勾选 Bluetooth,`Info.plist` 已声明用途说明;首次扫描会弹系统授权。若误点拒绝,到「系统设置 → 隐私与安全性 → 蓝牙」重新打开
+- Android:Manifest 已声明 `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`(API 31+)与旧版蓝牙 / 定位权限;Android 11 及以下还需打开系统定位服务才能扫描 BLE
+- 手环同时只能被一个中心设备连接:若已连手机 App,先在手机端断开,或在手环上重新开启心率广播
+- 无硬件调试:实现 `BleHeartRateTransport` 的 Fake 即可驱动 `BleHeartRateSource` 的扫描 / 连接 / 重连状态机(见 `test/data/services/ble_heart_rate_source_test.dart`)
 
 国内网络环境:Gradle/Maven 拉取失败时设置代理 —
 
@@ -92,6 +102,6 @@ adb logcat -d | grep -E "flutter|pulse"        # 日志
 
 ## 测试
 
-- 单元/widget 测试镜像 lib 目录结构,`flutter test` 一键运行(当前 46 个全绿)
+- 单元/widget 测试镜像 lib 目录结构,`flutter test` 一键运行;BLE 解析与连接状态机均有无硬件单测(见 `test/data/services/`)
 - 组件探针:widget 测试先行验证渲染异常(如 ColorPicker 的 LookupBoundary 问题在测试环境不重现,需要真机日志)
 - macOS 真机日志:直接运行二进制 `.../MacOS/pulse_sight > /tmp/app.log 2>&1 &`(flutter run 的 stdout 在管道中有缓冲延迟)

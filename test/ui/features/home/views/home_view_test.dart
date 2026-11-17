@@ -6,6 +6,8 @@ import 'package:material_ui/material_ui.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:pulse_sight/data/repositories/heart_rate_repository.dart';
 import 'package:pulse_sight/data/repositories/settings_repository.dart';
+import 'package:pulse_sight/data/services/heart_rate_source.dart';
+import 'package:pulse_sight/domain/models/heart_rate_device.dart';
 import 'package:pulse_sight/ui/core/theme/app_theme.dart';
 import 'package:pulse_sight/ui/core/widgets/setting_row.dart';
 import 'package:pulse_sight/ui/features/home/view_models/home_view_model.dart';
@@ -17,6 +19,7 @@ import '../home_view_model_test.dart'
         FakeMenubarDisplay,
         FakeObsOverlayDisplay,
         FakeScenarioHeartRateSource,
+        FakeScannerHeartRateSource,
         FakeSettingsRepository;
 
 /// 测试环境无 window_manager 原生插件,mock 基础查询通道。
@@ -52,14 +55,18 @@ Future<(HomeViewModel, FakeSettingsRepository)> _pump(
   WidgetTester tester, {
   required double width,
   required double height,
+  HeartRateSource? source,
+  FakeSettingsRepository? initialSettings,
 }) async {
   tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   _mockWindowManagerChannel();
 
-  final settings = FakeSettingsRepository();
-  final repository = HeartRateRepository(source: FakeScenarioHeartRateSource());
+  final settings = initialSettings ?? FakeSettingsRepository();
+  final repository = HeartRateRepository(
+    source: source ?? FakeScenarioHeartRateSource(),
+  );
   final viewModel = HomeViewModel(
     repository: repository,
     settings: settings,
@@ -111,7 +118,7 @@ void main() {
       }
       // 默认停留在监视器页:连接按钮可见,其余详情面板离屏不渲染。
       expect(find.byKey(const Key('desktop_pane_monitor')), findsOneWidget);
-      expect(find.text('连接手环(模拟)'), findsOneWidget);
+      expect(find.text('连接设备'), findsOneWidget);
       expect(find.byKey(const Key('desktop_pane_display')), findsNothing);
       expect(find.byKey(const Key('desktop_pane_style')), findsNothing);
       // 窗口控制按钮:Windows 上标题栏由 Flutter 自绘承担,三个按钮
@@ -164,7 +171,7 @@ void main() {
       expect(find.text('动效与文字'), findsOneWidget);
       expect(find.text('实时预览 · 与悬浮窗观感一致'), findsOneWidget);
       // 切走后监视器页的连接按钮离屏。
-      expect(find.text('连接手环(模拟)'), findsNothing);
+      expect(find.text('连接设备'), findsNothing);
     });
 
     testWidgets('接近断点的桌面宽度下样式页退化为堆叠布局且无溢出', (tester) async {
@@ -198,6 +205,96 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 100));
       expect(settings.store[SettingsKeys.themeMode], 'dark');
+    });
+  });
+
+  group('设备选择', () {
+    testWidgets('连接设备弹窗扫描并列出心率设备', (tester) async {
+      final scanner = FakeScannerHeartRateSource();
+      await _pump(tester, width: 400, height: 900, source: scanner);
+
+      await tester.tap(find.text('连接设备'));
+      await tester.pump();
+      // 扫描在弹窗首帧后启动,再 pump 一帧刷新扫描状态。
+      await tester.pump();
+
+      expect(find.byKey(const Key('device_picker_dialog')), findsOneWidget);
+      expect(find.text('正在搜索附近的心率设备…'), findsOneWidget);
+
+      scanner.emitDevices(const [
+        HeartRateDevice(
+          id: 'band-1',
+          name: 'Xiaomi Smart Band 10',
+          rssi: -48,
+          advertisesHeartRate: true,
+        ),
+        HeartRateDevice(id: 'buds', name: 'AirPods', rssi: -70),
+      ]);
+      await tester.pump();
+
+      // 默认只显示广播了心率服务的设备。
+      expect(find.text('Xiaomi Smart Band 10'), findsOneWidget);
+      expect(find.text('AirPods'), findsNothing);
+
+      await tester.tap(find.text('显示全部蓝牙设备'));
+      await tester.pump();
+      expect(find.text('AirPods'), findsOneWidget);
+
+      await tester.tap(find.text('Xiaomi Smart Band 10'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byKey(const Key('device_picker_dialog')), findsNothing);
+      expect(scanner.calls, contains('connectTo:band-1'));
+    });
+
+    testWidgets('扫描无结果时仍显示上次连接设备并可重连', (tester) async {
+      final scanner = FakeScannerHeartRateSource();
+      final settings = FakeSettingsRepository()
+        ..store[SettingsKeys.bleLastDeviceId] = 'band-1'
+        ..store[SettingsKeys.bleLastDeviceName] = 'Xiaomi Smart Band 10';
+      await _pump(
+        tester,
+        width: 400,
+        height: 900,
+        source: scanner,
+        initialSettings: settings,
+      );
+
+      await tester.tap(find.text('连接设备'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Xiaomi Smart Band 10'), findsOneWidget);
+      expect(find.textContaining('上次连接'), findsOneWidget);
+
+      await tester.tap(find.text('Xiaomi Smart Band 10'));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.byKey(const Key('device_picker_dialog')), findsNothing);
+      expect(scanner.calls, contains('connectTo:band-1'));
+    });
+
+    testWidgets('连接成功后显示设备名与断开按钮', (tester) async {
+      final scanner = FakeScannerHeartRateSource();
+      final (viewModel, _) = await _pump(
+        tester,
+        width: 400,
+        height: 900,
+        source: scanner,
+      );
+
+      await viewModel.connectToDevice(
+        const HeartRateDevice(
+          id: 'band-1',
+          name: 'Xiaomi Smart Band 10',
+          advertisesHeartRate: true,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('已连接'), findsOneWidget);
+      expect(find.text('设备:Xiaomi Smart Band 10'), findsOneWidget);
+      expect(find.text('断开连接'), findsOneWidget);
     });
   });
 }

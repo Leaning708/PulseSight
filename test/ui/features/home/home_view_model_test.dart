@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pulse_sight/data/repositories/heart_rate_repository.dart';
 import 'package:pulse_sight/data/repositories/settings_repository.dart';
+import 'package:pulse_sight/data/services/ble_heart_rate_transport.dart';
+import 'package:pulse_sight/data/services/heart_rate_device_scanner.dart';
 import 'package:pulse_sight/data/services/heart_rate_scenario_source.dart';
 import 'package:pulse_sight/data/services/heart_rate_source.dart';
 import 'package:pulse_sight/data/services/platform/android_display_service.dart';
@@ -12,6 +14,7 @@ import 'package:pulse_sight/data/services/platform/macos_app_menu_service.dart';
 import 'package:pulse_sight/data/services/platform/macos_menubar_service.dart';
 import 'package:pulse_sight/data/services/platform/obs_overlay_service.dart';
 import 'package:pulse_sight/domain/models/heart_rate_connection.dart';
+import 'package:pulse_sight/domain/models/heart_rate_device.dart';
 import 'package:pulse_sight/domain/models/heart_rate_scenario.dart';
 import 'package:pulse_sight/domain/models/overlay_style.dart';
 import 'package:pulse_sight/ui/features/home/view_models/home_view_model.dart';
@@ -54,15 +57,97 @@ class FakeHeartRateSource implements HeartRateSource {
     _setStatus(HeartRateConnection.disconnected);
   }
 
-  void _setStatus(HeartRateConnection status) {
-    status = status;
-    _connectionController.add(status);
+  void _setStatus(HeartRateConnection next) {
+    status = next;
+    _connectionController.add(next);
   }
 
   @override
   void dispose() {
     _bpmController.close();
     _connectionController.close();
+  }
+}
+
+/// 在 [FakeHeartRateSource] 之上追加设备扫描 / 指定连接能力的 Fake。
+class FakeScannerHeartRateSource extends FakeHeartRateSource
+    implements HeartRateDeviceScanner {
+  final StreamController<List<HeartRateDevice>> _scanController =
+      StreamController<List<HeartRateDevice>>.broadcast();
+  final StreamController<bool> _scanningController =
+      StreamController<bool>.broadcast();
+  final StreamController<String> _errorController =
+      StreamController<String>.broadcast();
+
+  final List<String> calls = [];
+
+  HeartRateDevice? targetDevice;
+
+  bool scanning = false;
+
+  /// startScan 抛出该异常(模拟蓝牙未开启)。
+  Object? startScanError;
+
+  @override
+  Stream<List<HeartRateDevice>> get scanResults => _scanController.stream;
+
+  @override
+  Stream<bool> get scanningStream async* {
+    yield scanning;
+    yield* _scanningController.stream;
+  }
+
+  @override
+  bool get isScanning => scanning;
+
+  @override
+  HeartRateDevice? get connectedDevice =>
+      status == HeartRateConnection.connected ? targetDevice : null;
+
+  @override
+  Stream<String> get errors => _errorController.stream;
+
+  @override
+  Future<void> startScan() async {
+    calls.add('startScan');
+    final error = startScanError;
+    if (error != null) throw error;
+    _setScanning(true);
+  }
+
+  @override
+  Future<void> stopScan() async {
+    calls.add('stopScan');
+    _setScanning(false);
+  }
+
+  @override
+  Future<void> connectTo(HeartRateDevice device) async {
+    targetDevice = device;
+    calls.add('connectTo:${device.id}');
+    _setStatus(HeartRateConnection.connected);
+    emitReading(72);
+  }
+
+  void emitDevices(List<HeartRateDevice> devices) {
+    _scanController.add(devices);
+  }
+
+  void emitError(String message) {
+    _errorController.add(message);
+  }
+
+  void _setScanning(bool value) {
+    scanning = value;
+    _scanningController.add(value);
+  }
+
+  @override
+  void dispose() {
+    _scanController.close();
+    _scanningController.close();
+    _errorController.close();
+    super.dispose();
   }
 }
 
@@ -418,6 +503,7 @@ void main() {
 
       expect(viewModel.connection, HeartRateConnection.disconnected);
       expect(viewModel.canConnect, isTrue);
+      expect(viewModel.bpm, isNull);
     });
 
     test('调节悬浮窗样式:更新状态并推送到显示端', () async {
@@ -798,6 +884,152 @@ void main() {
 
       expect(appMenu.updateCount, greaterThan(pushed));
       expect(appMenu.lastStates?.desktopOverlay, isTrue);
+    });
+  });
+
+  group('设备扫描', () {
+    late FakeScannerHeartRateSource source;
+    late HeartRateRepository repository;
+    late FakeSettingsRepository settings;
+    late HomeViewModel viewModel;
+
+    const band = HeartRateDevice(
+      id: 'band-1',
+      name: 'Xiaomi Smart Band 10',
+      rssi: -48,
+      advertisesHeartRate: true,
+    );
+    const buds = HeartRateDevice(id: 'buds', name: 'AirPods', rssi: -70);
+
+    setUp(() {
+      source = FakeScannerHeartRateSource();
+      repository = HeartRateRepository(source: source);
+      settings = FakeSettingsRepository();
+      viewModel = HomeViewModel(repository: repository, settings: settings);
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+      repository.dispose();
+    });
+
+    test('扫描结果默认只保留心率设备,可切换显示全部', () async {
+      await viewModel.init();
+      expect(viewModel.supportsDevicePicker, isTrue);
+
+      source.emitDevices([band, buds]);
+      await pumpEventQueue();
+
+      expect(viewModel.discoveredDevices.map((d) => d.id), ['band-1']);
+      expect(viewModel.showAllDevices, isFalse);
+
+      viewModel.setShowAllDevices(true);
+      expect(viewModel.discoveredDevices.map((d) => d.id), ['band-1', 'buds']);
+    });
+
+    test('beginDeviceScan 开始扫描,stopDeviceScan 停止', () async {
+      await viewModel.init();
+
+      await viewModel.beginDeviceScan();
+
+      expect(source.calls, contains('startScan'));
+      expect(viewModel.isScanning, isTrue);
+
+      await viewModel.stopDeviceScan();
+
+      expect(viewModel.isScanning, isFalse);
+      expect(source.calls, contains('stopScan'));
+    });
+
+    test('扫描失败显示错误并复位扫描状态', () async {
+      source.startScanError = const BleException('蓝牙未开启或未授权');
+      await viewModel.init();
+
+      await viewModel.beginDeviceScan();
+
+      expect(viewModel.scanError, '蓝牙未开启或未授权');
+      expect(viewModel.isScanning, isFalse);
+    });
+
+    test('连接选中设备后同步设备名与心率', () async {
+      await viewModel.init();
+
+      await viewModel.connectToDevice(band);
+      await pumpEventQueue();
+
+      expect(source.calls, contains('connectTo:band-1'));
+      expect(viewModel.connection, HeartRateConnection.connected);
+      expect(viewModel.connectedDevice, band);
+      expect(viewModel.bpm, 72);
+    });
+
+    test('连接成功后持久化设备 ID 与名称', () async {
+      await viewModel.init();
+
+      await viewModel.connectToDevice(band);
+      await pumpEventQueue();
+
+      expect(settings.store[SettingsKeys.bleLastDeviceId], 'band-1');
+      expect(
+        settings.store[SettingsKeys.bleLastDeviceName],
+        'Xiaomi Smart Band 10',
+      );
+    });
+
+    test('断开后扫描结果丢失名称 / 心率标记时仍保留上次设备', () async {
+      await viewModel.init();
+      await viewModel.connectToDevice(band);
+      await pumpEventQueue();
+      await viewModel.disconnect();
+      await pumpEventQueue();
+
+      // 手环断开后广播包不再携带名称与 0x180D 服务标记。
+      source.emitDevices(const [
+        HeartRateDevice(id: 'band-1', name: '', rssi: -46),
+      ]);
+      await pumpEventQueue();
+
+      final devices = viewModel.discoveredDevices;
+      expect(devices, hasLength(1));
+      expect(devices.single.name, 'Xiaomi Smart Band 10');
+      expect(devices.single.isRemembered, isTrue);
+      expect(devices.single.advertisesHeartRate, isFalse);
+
+      await viewModel.connectToDevice(devices.single);
+      await pumpEventQueue();
+      expect(source.calls, contains('connectTo:band-1'));
+    });
+
+    test('启动时恢复上次设备并在无扫描结果时仍可连接', () async {
+      settings.store
+        ..[SettingsKeys.bleLastDeviceId] = 'band-1'
+        ..[SettingsKeys.bleLastDeviceName] = 'Xiaomi Smart Band 10';
+      await viewModel.init();
+
+      source.emitDevices(const []);
+      await pumpEventQueue();
+
+      final devices = viewModel.discoveredDevices;
+      expect(devices, hasLength(1));
+      expect(devices.single.id, 'band-1');
+      expect(devices.single.isRemembered, isTrue);
+    });
+
+    test('连接错误写入 connectionError,断开后清空', () async {
+      await viewModel.init();
+      await viewModel.connectToDevice(band);
+      await pumpEventQueue();
+
+      source.emitError('设备连接已断开,请确认手环已开启「心率广播」');
+      await pumpEventQueue();
+
+      expect(viewModel.connectionError, contains('设备连接已断开'));
+
+      await viewModel.disconnect();
+      await pumpEventQueue();
+
+      expect(viewModel.connectedDevice, isNull);
+      expect(viewModel.connectionError, isNull);
     });
   });
 }

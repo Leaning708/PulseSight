@@ -1,4 +1,4 @@
-/// 手环连接状态。
+/// 心率设备连接状态。
 enum HeartRateConnection {
   /// 未连接。
   disconnected,

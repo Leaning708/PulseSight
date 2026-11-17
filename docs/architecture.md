@@ -13,13 +13,14 @@
 ├──────────────────────────────────────────────────────────────────┤
 │ Data 层                                                          │
 │  data/repositories   HeartRateRepository / SettingsRepository     │
-│  data/services       HeartRateSource(抽象)+ 模拟源                │
+│  data/services       HeartRateSource(抽象)、BLE 数据源 + 传输层、  │
+│                      模拟源、心率测量解析                          │
 │  data/services/platform  各显示端服务(悬浮窗/菜单栏/通知/字体)      │
 ├──────────────────────────────────────────────────────────────────┤
 │ Domain 层                                                        │
 │  domain/models     HeartRateReading / HeartRateHistory /          │
 │                    OverlayStyle / HeartRateConnection /           │
-│                    HeartRateScenario                              │
+│                    HeartRateScenario / HeartRateDevice            │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -28,7 +29,7 @@
 ## 核心数据流
 
 ```
-HeartRateSource(模拟)                    ← 未来:小米手环 BLE 广播实现
+HeartRateSource(默认 BLE / 可选模拟)
   └─ bpmStream / connectionStream
       HeartRateRepository               ← 唯一数据出口
         ├─ HomeViewModel                → HomeView(主界面)
@@ -39,6 +40,28 @@ HeartRateSource(模拟)                    ← 未来:小米手环 BLE 广播实
 ```
 
 每个显示端服务内部订阅 repository 的广播流并转发;样式(OverlayStyle)变更经同一条链路整包 JSON 推送。
+
+## 真实设备连接(BLE 心率广播)
+
+默认数据源为 `BleHeartRateSource`,通过标准蓝牙心率规范读取设备:
+
+| 层 | 类 | 职责 |
+| --- | --- | --- |
+| 领域模型 | `HeartRateDevice` | 扫描结果(id / 名称 / RSSI / 是否广播心率服务) |
+| 能力接口 | `HeartRateDeviceScanner` | 扫描结果、扫描状态、错误流、指定设备连接;模拟源不实现,UI 据此显隐设备选择弹窗 |
+| 数据源 | `BleHeartRateSource` | 连接状态机:扫描 → 连接 → 订阅 → 断线重连;忽略未佩戴时的 0 与异常值 |
+| 数据源 | `BleHeartRateTransport` | 插件无关的传输抽象(扫描 / 连接 / 返回 bpm 流),便于无硬件测试 |
+| 平台实现 | `FlutterBlueHeartRateTransport` | 基于 `flutter_blue_plus` 的实现;macOS / Android / Windows(WinRT)/ iOS / Linux 通用 |
+
+关键实现点:
+
+- **扫描不做平台层服务过滤**:部分设备(尤其旧固件)不在广播包中声明 0x180D,平台层过滤会直接搜不到;改为扫描全部设备,在 Data 层标记 `advertisesHeartRate`,弹窗默认只显示心率设备,并允许「显示全部蓝牙设备」手动选择
+- **连接流程**:`startScan` → 选择设备 → `device.connect()` → `discoverServices()` → 找 0x180D 服务内的 0x2A37 特征值(找不到再按特征值 UUID 全表兜底)→ `setNotifyValue(true)` → 解析 flags(bit0 决定 8/16 位)→ 推送 bpm
+- **断线重连**:设备侧断开后按 1s / 2s / 4s 重连三次;手动断开不重连;重连期间状态保持 `connecting`,全部失败后回到 `disconnected` 并显示错误
+- **记住上次设备**:小米手环在 GATT 断开后会停止广播设备名与 `0x180D` 服务标记(扫描包变成空名称、无心率服务),但系统侧设备 ID 仍可直接重连。应用把上次连接的设备 ID / 名称持久化(`ble.last_device_id` / `ble.last_device_name`),扫描结果按 ID 合并并把名称补回,以「上次连接」标记显示;即使广播包不再带心率服务,也可点击直接重连,无需在手环上重新开启心率广播
+- **错误提示**:蓝牙未开启 / 未授权、未找到心率服务、连接超时等经能力接口的错误流送到 `HomeViewModel.connectionError`,主界面直接展示
+- **权限**:macOS 需要 App Sandbox 的 `com.apple.security.device.bluetooth` 与 `NSBluetoothAlwaysUsageDescription`;Android 需要 `BLUETOOTH_SCAN` / `BLUETOOTH_CONNECT`(API 31+)及旧版蓝牙 / 定位权限;插件在首次扫描时触发系统授权
+- **模拟模式**:`main.dart` 以 `--dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true` 切换到 `SimulatedHeartRateSource`,此时场景切换 UI 才出现
 
 ## 模拟心率场景(HeartRateScenario)
 
@@ -147,13 +170,13 @@ Windows 子进程要点:
 - ECG 五样式:关 / 直线 / 单峰 / 经典 P-QRS-T / 数字(心内 TextPainter 绘制 bpm)
 - 辉光:双层(内亮 + 外柔),强度倍率作用于模糊半径与透明度
 
-## 数据源替换点(接入真实手环)
+## 数据源与能力接口
 
-实现 `HeartRateSource` 接口(见 `lib/data/services/heart_rate_source.dart`):
+`HeartRateSource`(`lib/data/services/heart_rate_source.dart`)只要求心率与连接状态两路数据;真实设备扫描是独立能力,由 `HeartRateDeviceScanner` 探测:
 
 ```dart
 abstract interface class HeartRateSource {
-  Stream<int> get bpmStream;                 // 心率采样流
+  Stream<int> get bpmStream;
   Stream<HeartRateConnection> get connectionStream;
   HeartRateConnection get status;
   int? get currentBpm;
@@ -163,12 +186,13 @@ abstract interface class HeartRateSource {
 }
 ```
 
-新增 `MiBandBleHeartRateSource`(建议基于 `flutter_blue_plus`,监听标准 Heart Rate Service `0x180D` 的 measurement 特征)并在 `main.dart` 的 `_runMainApp` 中替换 `SimulatedHeartRateSource` 即可,上层 Repository / 显示端 / UI 均无需改动。
+模拟源额外实现 `HeartRateScenarioSource`(场景切换),BLE 源额外实现 `HeartRateDeviceScanner`(扫描 / 指定设备连接);`HeartRateRepository` 以 `scenarioSource` / `deviceScanner` 暴露能力,UI 按能力渲染,不依赖具体数据源。若未来接入其他协议(如厂商私有 GATT),实现这两个接口并在 `main.dart` 替换即可。
 
 ## 关键依赖版本(勿随意升级)
 
 | 包 | 版本 | 说明 |
 | --- | --- | --- |
+| flutter_blue_plus | 2.3.15 | BLE 扫描 / 连接 / 订阅;Darwin 端走 Swift Package Manager,Windows 端由 `flutter_blue_plus_winrt` 提供 |
 | window_manager | **0.5.2 固定** | 0.6+ 重写为进程级绑定(nativeapi),与 desktop_multi_window 多引擎子窗口不兼容;0.5.x 为引擎级绑定。另:0.7 移除了 legacy API |
 | desktop_multi_window | 0.3.1 | 副窗口创建 + 跨窗口通信(unidirectional channel) |
 | flutter_overlay_window | 1.0.2 | Android 悬浮窗(注意 showOverlay 尺寸单位为物理像素) |
@@ -183,3 +207,4 @@ abstract interface class HeartRateSource {
 3. **CLT 与 Xcode 版本必须一致**,否则 xcodebuild 插件加载失败。
 4. **CocoaPods 必须与 Homebrew Ruby 大版本匹配**,旧 gem shim 会抢占 PATH。
 5. 鼠标穿透开启时,主窗口对一切鼠标事件透明(包括自动化工具的合成事件)— 自动化驱动前先关闭穿透。
+6. **蓝牙权限**:App Sandbox 必须勾选 Bluetooth(`com.apple.security.device.bluetooth`),否则 `adapterState` 一直是 `unauthorized`;`Info.plist` 需要 `NSBluetoothAlwaysUsageDescription`。首次扫描会弹系统授权,拒绝后要到「系统设置 → 隐私与安全性 → 蓝牙」重新打开。

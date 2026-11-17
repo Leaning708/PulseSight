@@ -124,7 +124,7 @@ class _NarrowHomeBody extends StatelessWidget {
 Widget _footnote(BuildContext context) {
   final scheme = Theme.of(context).colorScheme;
   return Text(
-    '当前使用模拟数据源,支持低 / 中 / 高心率场景;小米手环蓝牙广播连接将在后续版本提供。',
+    '支持小米手环等标准 BLE 心率广播设备;连接前请在设备上开启「心率广播」并靠近本机。',
     textAlign: TextAlign.center,
     style: Theme.of(context).textTheme.bodySmall
         ?.copyWith(color: scheme.onSurfaceVariant),
@@ -518,7 +518,10 @@ class _DesktopHeader extends StatelessWidget {
         IgnorePointer(
           child: StatusPill(
             color: connectionStatusColor(viewModel.connection, scheme),
-            label: connectionStatusLabel(viewModel.connection),
+            label: connectionStatusLabel(
+              viewModel.connection,
+              simulated: viewModel.supportsScenario,
+            ),
             detail: connected ? '${viewModel.bpm ?? '--'} bpm' : null,
           ),
         ),

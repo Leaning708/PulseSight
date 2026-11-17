@@ -7,8 +7,12 @@
 
 ### Added
 
+- **真实设备连接(BLE 心率广播)**:`BleHeartRateSource` + `BleHeartRateTransport` 抽象 + `FlutterBlueHeartRateTransport`(flutter_blue_plus 2.3.15),扫描并连接标准心率服务 0x180D,订阅 0x2A37 测量值,支持 8/16 位解析、未佩戴 0 值过滤、断线自动重连(1s/2s/4s)
+- **设备选择弹窗**:默认只列出广播 0x180D 的设备(按 RSSI 排序),可切换「显示全部蓝牙设备」;连接后主界面展示设备名,失败原因直接显示
+- **设备扫描能力接口** `HeartRateDeviceScanner`:与模拟场景能力同一套探测方式,UI 不依赖具体数据源
+- **测试**:心率测量解析、BLE 连接状态机(扫描 / 连接 / 断开 / 重连耗尽 / 自动选择)、设备选择弹窗与扫描 ViewModel 状态
 - **Windows 悬浮窗(独立进程方案)**:`WindowsOverlayProcessService` + `overlay_ipc.dart`(回环 TCP / 换行 JSON)+ `OverlayProcessPage`。同一个 exe 以 `--overlay-process` 自举子进程,主进程只负责拉起、推送心率/样式快照与显隐/穿透指令;子进程崩溃不影响主界面,主进程退出时子进程自动回收。用于规避 Flutter Windows 嵌入层不支持单进程多引擎的限制,详见 `docs/troubleshooting.md` §9 与架构说明
-- **核心**:模拟心率数据源(`SimulatedHeartRateSource`,随机游走 55–105bpm,连接状态机),`HeartRateSource` 抽象接口为后续小米手环 BLE 广播预留替换点
+- **核心**:模拟心率数据源(`SimulatedHeartRateSource`,随机游走 55–105bpm,连接状态机),`HeartRateSource` 抽象接口为 BLE 数据源预留替换点(已落地,见上)
 - **悬浮窗**(Windows/macOS):desktop_multi_window 副窗口 + window_manager 0.5.2(引擎级绑定),无边框/置顶/右下角定位/鼠标穿透开关/拖动;macOS 悬浮窗透明三件套修复
 - **悬浮窗**(Android):flutter_overlay_window 集成,SYSTEM_ALERT_WINDOW 权限流,可拖动,深色卡片,尺寸按 DPR 换算,零尺寸竞态缓解
 - **macOS 菜单栏**:NSStatusItem 实时心率(`♥ 72`/灰 `♥ --`),显示主窗口/退出菜单;文字律动与心形同步
@@ -21,6 +25,7 @@
 
 ### Fixed
 
+- **断开后无法重新扫描到手环**:小米手环在 GATT 断开后会停止广播设备名与 `0x180D` 服务标记(扫描结果仍在,但名称为空且不再声明心率服务),默认过滤会把它隐藏。现在持久化上次连接的设备 ID / 名称,按 ID 合并扫描结果并以「上次连接」标记展示,可直接重连,无需重新开关手环广播
 - Windows 顶栏 ❤ 图标抽风(切到「显示端」必现、移入/移出带 tooltip 的按钮时闪现):根因是 Impeller(Windows)在帧内含 saveLayer(`Opacity` / `FadeTransition`)时把其它字形以错误变换光栅化。Windows runner 改用 Skia 后端(`ImpellerSwitch::Disabled`,与 macOS 一致),并从代码层去掉禁用行的 `Opacity` 图层。详见 `docs/troubleshooting.md` §10
 - 悬浮窗数据推送链路中断:`DesktopOverlayPage._handleMethodCall` 的 `update` 分支漏写 `break`,继续落入 `setPassthrough` 对 Map 做 `as bool` 强转抛 `TypeError`,副窗口不再刷新(永远显示灰心 `--`)。已补 `break` 并新增推送链路测试
 - `setWindowMethodHandler` 未 `await`,导致首帧推送可能早于处理器注册
@@ -33,6 +38,9 @@
 
 ### Changed
 
+- **默认数据源改为真实 BLE**:启动即连接心率广播设备;模拟数据源改为
+  `--dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true` 启动,场景切换 UI 仅在模拟模式显示
+- **「连接手环」改为「连接设备」**:状态文案去掉「模拟」,连接中可取消,已连接显示设备名;页脚更新为 BLE 连接说明
 - **Windows 悬浮窗恢复可用**:由"暂停提供 + 界面提示"改为**独立子进程**渲染,与 macOS 的进程内方案并存(两端共用 `DesktopOverlay` 抽象,UI 与 ViewModel 无感)
 - README 重写为当前功能集;新增架构/开发/排障文档
 - macOS 构建启用 Skia 后端(FLTEnableImpeller=false)

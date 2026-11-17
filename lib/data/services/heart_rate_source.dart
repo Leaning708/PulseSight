@@ -2,9 +2,9 @@ import '../../domain/models/heart_rate_connection.dart';
 
 /// 心率数据源抽象。
 ///
-/// 封装“如何拿到心率数据”:当前为模拟实现([SimulatedHeartRateSource]),
-/// 后续接入小米手环蓝牙广播时,提供新的 [HeartRateSource] 实现即可,
-/// 上层 Repository 与 UI 无需改动。
+/// 封装“如何拿到心率数据”:默认实现为 BLE 心率广播
+/// (`BleHeartRateSource`),无设备时可用模拟实现
+/// (`SimulatedHeartRateSource`)。上层 Repository 与 UI 不依赖具体实现。
 abstract interface class HeartRateSource {
   /// 心率采样流,每次采样一个 bpm 值。
   Stream<int> get bpmStream;

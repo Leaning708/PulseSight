@@ -30,6 +30,11 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<!-- 连接 BLE 心率设备(蓝牙访问权限说明) -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>PulseSight 需要蓝牙连接心率设备,读取并显示实时心率。</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>PulseSight 需要蓝牙连接心率设备,读取并显示实时心率。</string>
 	<!-- 关闭 Impeller:其 macOS 渲染后端不支持窗口透明(透明窗口会渲染为黑底) -->
 	<key>FLTEnableImpeller</key>
 	<false/>

@@ -8,8 +8,11 @@ import 'package:window_manager/window_manager.dart';
 
 import 'data/repositories/heart_rate_repository.dart';
 import 'data/repositories/settings_repository.dart';
+import 'data/services/ble_heart_rate_source.dart';
+import 'data/services/heart_rate_source.dart';
 import 'data/services/platform/android_display_service.dart';
 import 'data/services/platform/desktop_overlay_service.dart';
+import 'data/services/platform/flutter_blue_heart_rate_transport.dart';
 import 'data/services/platform/macos_app_menu_service.dart';
 import 'data/services/platform/macos_menubar_service.dart';
 import 'data/services/platform/obs_overlay_service.dart';
@@ -23,6 +26,15 @@ import 'ui/features/home/views/home_view.dart';
 import 'ui/features/overlay/views/android_overlay_page.dart';
 import 'ui/features/overlay/views/desktop_overlay_page.dart';
 import 'ui/features/overlay/views/overlay_process_page.dart';
+
+/// 是否使用模拟心率数据源。
+///
+/// 默认连接真实 BLE 心率设备(小米手环「心率广播」等);无设备时可用
+/// `flutter run --dart-define=PULSESIGHT_SIMULATE_HEART_RATE=true`
+/// 启动模拟数据源,用于调整 UI 与模拟场景。
+const bool simulateHeartRate = bool.fromEnvironment(
+  'PULSESIGHT_SIMULATE_HEART_RATE',
+);
 
 /// 应用入口。
 ///
@@ -87,11 +99,17 @@ Future<void> _runMainApp() async {
   // 启动时先恢复持久化的模拟场景,再构造数据源,
   // 使连接前的 UI 场景选择与实际生成参数一致。
   final stored = await settings.loadAll();
-  final source = SimulatedHeartRateSource(
-    scenario: HeartRateScenario.fromString(
-      stored[SettingsKeys.simulatedScenario] as String?,
-    ),
-  );
+  final HeartRateSource source;
+  if (simulateHeartRate) {
+    source = SimulatedHeartRateSource(
+      scenario: HeartRateScenario.fromString(
+        stored[SettingsKeys.simulatedScenario] as String?,
+      ),
+    );
+  } else {
+    // 真实 BLE:标准心率服务(0x180D)广播,兼容小米手环「心率广播」。
+    source = BleHeartRateSource(FlutterBlueHeartRateTransport());
+  }
   final repository = HeartRateRepository(source: source);
 
   final DesktopOverlay? desktopOverlay;

@@ -3,6 +3,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- flutter_overlay_window 悬浮窗前台服务(API 34+ 要求 specialUse 类型声明) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <!-- 蓝牙心率设备(小米手环「心率广播」等标准 BLE 心率服务) -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <!-- Android 11 及以下使用旧蓝牙权限,扫描还需要定位权限 -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="28"/>
     <application
         android:label="PulseSight"
         android:name="${applicationName}"

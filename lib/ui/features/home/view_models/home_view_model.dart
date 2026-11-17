@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
 
 import '../../../../data/repositories/settings_repository.dart';
+import '../../../../data/services/ble_heart_rate_transport.dart';
 import '../../../../data/services/platform/android_display_service.dart';
 import '../../../../data/services/platform/desktop_overlay_service.dart';
 import '../../../../data/services/platform/font_list_service.dart';
@@ -14,6 +15,7 @@ import '../../../../data/services/platform/obs_overlay_service.dart';
 import '../../../../data/services/heart_rate_scenario_source.dart';
 import '../../../../data/repositories/heart_rate_repository.dart';
 import '../../../../domain/models/heart_rate_connection.dart';
+import '../../../../domain/models/heart_rate_device.dart';
 import '../../../../domain/models/heart_rate_reading.dart';
 import '../../../../domain/models/heart_rate_history.dart';
 import '../../../../domain/models/heart_rate_scenario.dart';
@@ -47,12 +49,31 @@ class HomeViewModel extends ChangeNotifier {
 
   StreamSubscription<HeartRateReading>? _readingsSub;
   StreamSubscription<HeartRateConnection>? _connectionSub;
+  StreamSubscription<List<HeartRateDevice>>? _devicesSub;
+  StreamSubscription<bool>? _scanningSub;
+  StreamSubscription<String>? _errorsSub;
 
   bool _initialized = false;
 
   HeartRateConnection _connection = HeartRateConnection.disconnected;
 
   int? _bpm;
+
+  HeartRateDevice? _connectedDevice;
+
+  String? _lastDeviceId;
+
+  String? _lastDeviceName;
+
+  List<HeartRateDevice> _devices = const [];
+
+  bool _showAllDevices = false;
+
+  bool _isScanning = false;
+
+  String? _scanError;
+
+  String? _connectionError;
 
   ThemeMode _themeMode = ThemeMode.system;
 
@@ -138,6 +159,67 @@ class HomeViewModel extends ChangeNotifier {
   /// 是否可以发起连接(未连接时)。
   bool get canConnect => _connection == HeartRateConnection.disconnected;
 
+  /// 是否支持扫描并选择设备(真实 BLE 数据源才有该能力)。
+  bool get supportsDevicePicker => _repository.deviceScanner != null;
+
+  /// 当前连接 / 正在连接的设备;模拟数据源或未连接时为 null。
+  HeartRateDevice? get connectedDevice => _connectedDevice;
+
+  /// 当前可连接的设备列表。
+  ///
+  /// 默认只保留广播了心率服务的设备,但会合并「上次连接」的设备:
+  /// 小米手环断开后会停止广播名称与 0x180D 标记,仍可按系统设备 ID 重连,
+  /// 若按广播内容过滤会从列表里消失。
+  List<HeartRateDevice> get discoveredDevices {
+    final devices = [..._devices];
+    final last = _lastDevice;
+    if (last != null) {
+      final index = devices.indexWhere((device) => device.id == last.id);
+      if (index >= 0) {
+        final scanned = devices[index];
+        devices[index] = HeartRateDevice(
+          id: last.id,
+          name: scanned.name.trim().isEmpty ? last.name : scanned.name,
+          rssi: scanned.rssi,
+          advertisesHeartRate: scanned.advertisesHeartRate,
+          isRemembered: true,
+        );
+      } else {
+        devices.insert(0, last);
+      }
+    }
+    return List.unmodifiable(
+      _showAllDevices
+          ? devices
+          : devices.where(
+              (device) => device.advertisesHeartRate || device.isRemembered,
+            ),
+    );
+  }
+
+  /// 上次连接过的设备;尚未连接过任何设备时为 null。
+  HeartRateDevice? get _lastDevice {
+    final id = _lastDeviceId;
+    if (id == null || id.isEmpty) return null;
+    return HeartRateDevice(
+      id: id,
+      name: _lastDeviceName ?? '',
+      isRemembered: true,
+    );
+  }
+
+  /// 是否在设备选择弹窗中显示全部蓝牙设备。
+  bool get showAllDevices => _showAllDevices;
+
+  /// 是否正在扫描设备。
+  bool get isScanning => _isScanning;
+
+  /// 扫描失败提示(如蓝牙未开启)。
+  String? get scanError => _scanError;
+
+  /// 连接失败提示(如未找到心率服务、设备断开)。
+  String? get connectionError => _connectionError;
+
   /// 初始化:订阅数据流、加载持久化设置并恢复桌面显示端。
   Future<void> init() async {
     if (_initialized) return;
@@ -163,13 +245,45 @@ class HomeViewModel extends ChangeNotifier {
     });
     _connectionSub = _repository.connection.listen((status) {
       _connection = status;
+      _connectedDevice = status == HeartRateConnection.disconnected
+          ? null
+          : _repository.deviceScanner?.connectedDevice;
       if (status != HeartRateConnection.connected) {
         _heartRateHistory.clear();
+      }
+      if (status == HeartRateConnection.disconnected) {
+        _bpm = null;
+      }
+      if (status == HeartRateConnection.connected) {
+        _connectionError = null;
+        final device = _connectedDevice;
+        if (device != null && device.name.trim().isNotEmpty) {
+          unawaited(_rememberDevice(device));
+        }
       }
       notifyListeners();
     });
 
+    // 真实 BLE 数据源额外提供扫描结果与错误提示;模拟源没有这些流。
+    final scanner = _repository.deviceScanner;
+    if (scanner != null) {
+      _devicesSub = scanner.scanResults.listen((devices) {
+        _devices = devices;
+        notifyListeners();
+      });
+      _scanningSub = scanner.scanningStream.listen((scanning) {
+        _isScanning = scanning;
+        notifyListeners();
+      });
+      _errorsSub = scanner.errors.listen((message) {
+        _connectionError = message;
+        notifyListeners();
+      });
+    }
+
     final values = await _settings.loadAll();
+    _lastDeviceId = values[SettingsKeys.bleLastDeviceId] as String?;
+    _lastDeviceName = values[SettingsKeys.bleLastDeviceName] as String?;
     _themeMode = ThemeMode.values.firstWhere(
       (mode) => mode.name == values[SettingsKeys.themeMode],
       orElse: () => ThemeMode.system,
@@ -277,9 +391,80 @@ class HomeViewModel extends ChangeNotifier {
     unawaited(_syncAppMenu());
   }
 
-  /// 连接手环(模拟)。
+  /// 直接连接数据源。
+  ///
+  /// 真实 BLE 源会自动挑选信号最强的心率广播设备;带设备选择能力的源
+  /// 通常由 [beginDeviceScan] + [connectToDevice] 驱动。
   Future<void> connect() async {
+    _connectionError = null;
+    notifyListeners();
     await _repository.connect();
+  }
+
+  /// 开始设备扫描(打开设备选择弹窗时调用):清空旧结果与过滤条件。
+  Future<void> beginDeviceScan() => _startDeviceScan(resetFilter: true);
+
+  /// 重新扫描:保留「显示全部蓝牙设备」开关状态。
+  Future<void> rescanDevices() => _startDeviceScan(resetFilter: false);
+
+  Future<void> _startDeviceScan({required bool resetFilter}) async {
+    final scanner = _repository.deviceScanner;
+    if (scanner == null) return;
+    if (resetFilter) {
+      _showAllDevices = false;
+      _devices = const [];
+    }
+    _scanError = null;
+    _connectionError = null;
+    _isScanning = true;
+    notifyListeners();
+    try {
+      await scanner.startScan();
+    } on Object catch (error) {
+      _scanError = _describeError(error);
+      _isScanning = false;
+      notifyListeners();
+    }
+  }
+
+  /// 停止扫描(关闭设备选择弹窗时调用)。
+  Future<void> stopDeviceScan() async {
+    final scanner = _repository.deviceScanner;
+    if (scanner == null) return;
+    await scanner.stopScan();
+    _isScanning = scanner.isScanning;
+    notifyListeners();
+  }
+
+  /// 切换「显示全部蓝牙设备」;开启后不再过滤未声明心率服务的设备。
+  void setShowAllDevices(bool value) {
+    if (_showAllDevices == value) return;
+    _showAllDevices = value;
+    notifyListeners();
+  }
+
+  /// 连接用户选中的设备;连接结果通过连接状态与 [connectionError] 反馈。
+  Future<void> connectToDevice(HeartRateDevice device) async {
+    final scanner = _repository.deviceScanner;
+    if (scanner == null) return;
+    _scanError = null;
+    _connectionError = null;
+    _isScanning = false;
+    unawaited(_rememberDevice(device));
+    notifyListeners();
+    await scanner.connectTo(device);
+  }
+
+  /// 记住本次连接 / 尝试连接的设备,便于断开后直接重连。
+  Future<void> _rememberDevice(HeartRateDevice device) async {
+    final name = device.displayName == '未命名设备' ? '' : device.displayName;
+    if (_lastDeviceId == device.id && (_lastDeviceName ?? '') == name) {
+      return;
+    }
+    _lastDeviceId = device.id;
+    _lastDeviceName = name;
+    await _settings.setValue(SettingsKeys.bleLastDeviceId, device.id);
+    await _settings.setValue(SettingsKeys.bleLastDeviceName, name);
   }
 
   /// 切换模拟心率场景并持久化;数据源不支持场景时为空操作。
@@ -292,9 +477,13 @@ class HomeViewModel extends ChangeNotifier {
     await _settings.setValue(SettingsKeys.simulatedScenario, scenario.name);
   }
 
-  /// 断开手环。
+  /// 断开设备。
   Future<void> disconnect() async {
+    _connectionError = null;
+    _connectedDevice = null;
+    _bpm = null;
     await _repository.disconnect();
+    notifyListeners();
   }
 
   /// 切换界面主题模式(跟随系统 / 浅色 / 深色)并持久化。
@@ -581,6 +770,13 @@ class HomeViewModel extends ChangeNotifier {
     );
   }
 
+  /// 把扫描 / 连接异常转换为面向用户的提示。
+  static String _describeError(Object error) {
+    if (error is BleException) return error.message;
+    final text = error.toString().trim();
+    return text.isEmpty ? '蓝牙操作失败' : text;
+  }
+
   /// 将 ARGB 十六进制字符串解析为 Color,非法值回退 [fallback]。
   static Color _colorFromHex(String? hex, Color fallback) {
     if (hex == null || hex.isEmpty) {
@@ -724,6 +920,9 @@ class HomeViewModel extends ChangeNotifier {
   void dispose() {
     _readingsSub?.cancel();
     _connectionSub?.cancel();
+    _devicesSub?.cancel();
+    _scanningSub?.cancel();
+    _errorsSub?.cancel();
     _appMenu?.setToggleHandler(null);
     _appMenu?.setRefreshHandler(null);
     super.dispose();

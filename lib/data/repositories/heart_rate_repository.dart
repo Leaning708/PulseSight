@@ -1,11 +1,12 @@
 import '../../domain/models/heart_rate_connection.dart';
 import '../../domain/models/heart_rate_reading.dart';
+import '../services/heart_rate_device_scanner.dart';
 import '../services/heart_rate_scenario_source.dart';
 import '../services/heart_rate_source.dart';
 
 /// 心率数据仓库。
 ///
-/// 对上层屏蔽具体数据来源(当前为模拟源,后续替换为小米手环 BLE 广播),
+/// 对上层屏蔽具体数据来源(BLE 心率广播 / 模拟源),
 /// 并把原始 bpm 采样封装为 [HeartRateReading]。
 class HeartRateRepository {
   /// 创建仓库,持有唯一的数据来源 [source]。
@@ -33,6 +34,15 @@ class HeartRateRepository {
     final source = _source;
     return source is HeartRateScenarioSource
         ? source as HeartRateScenarioSource
+        : null;
+  }
+
+  /// 若数据源支持设备扫描与指定连接,返回该能力;模拟数据源返回 null,
+  /// 上层据此显隐设备选择弹窗。
+  HeartRateDeviceScanner? get deviceScanner {
+    final source = _source;
+    return source is HeartRateDeviceScanner
+        ? source as HeartRateDeviceScanner
         : null;
   }
 
