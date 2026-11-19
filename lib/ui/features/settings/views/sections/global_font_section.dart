@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../../../core/theme/app_dimens.dart';
+import '../../../../core/widgets/font_family_field.dart';
 import '../../../home/view_models/home_view_model.dart';
 
 /// 全局字体设置:应用界面统一字体,同时作为悬浮窗字体的默认值。
@@ -16,6 +17,9 @@ class GlobalFontSection extends StatelessWidget {
   /// 桌面端样式页的字体下拉 id,便于测试定位。
   static const Key dropdownKey = Key('global_font_dropdown');
 
+  /// 当前字体说明文本的 id,便于测试与无障碍定位。
+  static const Key currentFontKey = Key('global_font_current');
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -30,39 +34,33 @@ class GlobalFontSection extends StatelessWidget {
             Text('全局字体', style: textTheme.titleMedium),
             const SizedBox(height: AppSpacing.xs),
             Text(
-              '应用界面统一使用该字体;悬浮窗未单独指定字体时同样跟随。'
+              '应用界面统一使用该字体;悬浮窗未单独指定字体时同样跟随。',
+              style: textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
               '字体列表由系统提供,仅桌面端(Windows / macOS)可枚举。',
               style: textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: AppSpacing.md),
-            DropdownButton<String?>(
-              key: dropdownKey,
-              value: current,
-              isExpanded: true,
-              // Windows 字体族上百个,限制菜单高度避免全屏弹出。
-              menuMaxHeight: 400,
-              items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('系统默认'),
-                ),
-                ...viewModel.fontFamilies.map(
-                  (family) => DropdownMenuItem<String?>(
-                    value: family,
-                    child: Text(family, overflow: TextOverflow.ellipsis),
-                  ),
-                ),
-              ],
-              onChanged: viewModel.setGlobalFontFamily,
-            ),
-            const SizedBox(height: AppSpacing.xs),
+            const SizedBox(height: AppSpacing.lg),
             Text(
               '当前:${current ?? '系统默认'}',
+              key: currentFontKey,
               style: textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            FontFamilyField(
+              fieldKey: dropdownKey,
+              value: current,
+              fontFamilies: viewModel.fontFamilies,
+              emptyLabel: '系统默认',
+              onChanged: viewModel.setGlobalFontFamily,
             ),
           ],
         );

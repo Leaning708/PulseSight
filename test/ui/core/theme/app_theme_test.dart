@@ -20,7 +20,12 @@ void main() {
       expect(theme.colorScheme.brightness, Brightness.dark);
       expect(theme.scaffoldBackgroundColor, theme.colorScheme.surface);
       // 表面中性化:不再由种子色染出红棕底。
-      expect(theme.colorScheme.surface.toARGB32(), 0xFF141416);
+      expect(theme.colorScheme.surface.toARGB32(), 0xFF111114);
+      // 面板卡片比画布亮一档,保证深色下仍有层级。
+      expect(
+        AppTheme.panelColor(theme.colorScheme).computeLuminance(),
+        greaterThan(theme.colorScheme.surface.computeLuminance()),
+      );
     });
 
     test('深浅主题的面板卡片统一样式', () {

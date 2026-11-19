@@ -15,6 +15,9 @@ analyzer:
     - android/**
     - windows/**
     - macos/**
+    # 第三方插件内置副本:保持与上游代码一致,不套用本项目的 lint 规则
+    # (补丁说明见 third_party/flutter_overlay_window/PATCHES.md)。
+    - third_party/**
 
 linter:
   # The lint rules applied to this project can be customized in the

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
@@ -205,6 +206,15 @@ class PulseSightApp extends StatelessWidget {
         darkTheme: AppTheme.darkWithFont(viewModel.globalFontFamily),
         // 主题模式由 HomeViewModel 持久化与切换。
         themeMode: viewModel.themeMode,
+        // 状态栏 / 导航栏统一走深色:浅色主题下若由界面按主题自绘,顶部会
+        // 出现一条与深色舞台撞色的浅色横带。App 内文字与图标始终为浅色。
+        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle.light.copyWith(
+            statusBarColor: AppTheme.stageColor,
+            systemNavigationBarColor: AppTheme.stageColor,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        ),
         home: HomeView(viewModel: viewModel),
       ),
     );

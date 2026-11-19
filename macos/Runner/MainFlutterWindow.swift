@@ -72,9 +72,11 @@ final class OverlayWindowSupport {
 class MainFlutterWindow: NSWindow {
   /// 交通灯(关闭 / 最小化 / 缩放)的左侧起点。
   ///
-  /// 默认位置约为 7pt,而 Flutter 内容区左边距为 16pt、心形图标中心约在
-  /// 27pt。红绿灯半径约 7pt,起点取 20pt 时关闭按钮中心正好与心形对齐。
-  private let trafficLightLeadingInset: CGFloat = 20
+  /// 默认位置约为 7pt。Flutter 顶栏红心左边距 16pt、直径 22pt,中心在 27pt。
+  /// 纯几何对齐时关闭按钮起点应取 20pt;但红心是 22pt 的实心图形、交通灯
+  /// 只是 12pt 的小圆点,视觉重心不同,需要微调:取 17pt 时关闭按钮中心在
+  /// 24pt,灯组视觉重心落在红心左缘附近,平视不再「偏右」。
+  private let trafficLightLeadingInset: CGFloat = 17
 
   /// 菜单栏心率显示的 NSStatusItem。
   private var statusItem: NSStatusItem?
@@ -124,9 +126,12 @@ class MainFlutterWindow: NSWindow {
     DispatchQueue.main.async { [weak self] in
       self?.alignTrafficLights()
     }
+    // setFrame 已做同步校正,这里的通知只兜底覆盖 didBecomeKey / 全屏退出
+    // 这类不经过 setFrame 的 AppKit 重排。
     for name in [
       NSWindow.didBecomeKeyNotification,
       NSWindow.didResizeNotification,
+      NSWindow.didEndLiveResizeNotification,
       NSWindow.didExitFullScreenNotification,
     ] {
       NotificationCenter.default.addObserver(
@@ -136,9 +141,26 @@ class MainFlutterWindow: NSWindow {
   }
 
   @objc private func windowLayoutChanged(_ notification: Notification) {
-    DispatchQueue.main.async { [weak self] in
-      self?.alignTrafficLights()
-    }
+    // 同步校正:若放进 next runloop,用户会先看到 AppKit 把按钮摆回默认
+    // 位置、再被拉回来,这就是缩放窗口时红绿灯「抖一下」的来源。
+    alignTrafficLights()
+  }
+
+  /// 窗口尺寸变化(拖拽缩放、最大化、全屏进出)时立即校正。
+  ///
+  /// AppKit 会给标准按钮重新排位,若等到 didResize 通知之后再 async 校正,
+  /// 用户会先看到默认位置、再看到按钮被拉回——这就是「抖一下」。
+  /// 重写 setFrame 后在同一次布局里完成定位,肉眼不可见。
+  override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+    super.setFrame(frameRect, display: flag)
+    alignTrafficLights()
+  }
+
+  override func setFrame(
+    _ frameRect: NSRect, display flag: Bool, animate animateFlag: Bool
+  ) {
+    super.setFrame(frameRect, display: flag, animate: animateFlag)
+    alignTrafficLights()
   }
 
   /// 将系统交通灯整体右移到内容区左边距,保持按钮之间的原始间距。

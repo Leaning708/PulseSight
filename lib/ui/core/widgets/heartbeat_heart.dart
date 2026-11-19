@@ -15,7 +15,8 @@ import 'heartbeat_pulse.dart';
 /// 传入 [pulsePhase](0~1,心跳周期相位)时以此驱动绘制(与文字等元素
 /// 同步律动);不传则内部经 [HeartbeatPulse] 自驱动动画。
 /// [heartPulseEnabled] 为 false 时心形静止(仅脉冲关闭,心电图动画照常);
-/// [glowRadius]/[glowOpacity] 分别调节心跳辉光的半径与透明度。
+/// [glowEnabled] 控制是否绘制心跳辉光;[glowRadius]/[glowOpacity] 分别调节
+/// 辉光的半径与透明度(关闭辉光时二者保留但不生效)。
 /// 三端复用:主界面预览、桌面悬浮窗、Android 悬浮窗。
 class HeartbeatHeart extends StatelessWidget {
   /// 创建红心;[size] 为绘制区域的边长。
@@ -28,6 +29,7 @@ class HeartbeatHeart extends StatelessWidget {
     this.ecgColor = OverlayStyle.defaultEcgColor,
     this.pulsePhase,
     this.heartPulseEnabled = true,
+    this.glowEnabled = true,
     this.glowRadius = 1.0,
     this.glowOpacity = 0.5,
   });
@@ -55,6 +57,9 @@ class HeartbeatHeart extends StatelessWidget {
   final bool heartPulseEnabled;
 
   /// 心跳辉光强度(0 = 无辉光,1.0 = 默认)。
+  /// 是否绘制心跳辉光。
+  final bool glowEnabled;
+
   /// 辉光半径倍率(0 = 无辉光)。
   final double glowRadius;
 
@@ -92,6 +97,7 @@ class HeartbeatHeart extends StatelessWidget {
           heartColor: idle ? AppTheme.heartIdle : heartColor,
           ecgColor: idle ? AppTheme.heartIdle : ecgColor,
           heartPulseEnabled: heartPulseEnabled,
+          glowEnabled: glowEnabled,
           glowRadius: glowRadius,
           glowOpacity: glowOpacity,
         ),
@@ -151,6 +157,7 @@ class _HeartPainter extends CustomPainter {
     required this.heartColor,
     required this.ecgColor,
     required this.heartPulseEnabled,
+    required this.glowEnabled,
     required this.glowRadius,
     required this.glowOpacity,
   });
@@ -177,6 +184,9 @@ class _HeartPainter extends CustomPainter {
   final bool heartPulseEnabled;
 
   /// 心跳辉光强度倍率(0 = 无辉光)。
+  /// 是否绘制心跳辉光。
+  final bool glowEnabled;
+
   /// 辉光半径倍率(0 = 无辉光)。
   final double glowRadius;
 
@@ -207,7 +217,7 @@ class _HeartPainter extends CustomPainter {
     canvas.scale(scale, scale);
     canvas.translate(-12, -12.175);
 
-    if (scale > 1.0 && glowOpacity > 0 && glowRadius > 0) {
+    if (glowEnabled && scale > 1.0 && glowOpacity > 0 && glowRadius > 0) {
       // 双层辉光:内层亮辉光 + 外层大范围柔光;
       // 半径与透明度由两个独立滑块分别调节。
       final blur = (scale - 1.0) * 90 * glowRadius / (layout.s * scale);
@@ -263,6 +273,7 @@ class _HeartPainter extends CustomPainter {
         heartColor != oldDelegate.heartColor ||
         ecgColor != oldDelegate.ecgColor ||
         heartPulseEnabled != oldDelegate.heartPulseEnabled ||
+        glowEnabled != oldDelegate.glowEnabled ||
         glowRadius != oldDelegate.glowRadius ||
         glowOpacity != oldDelegate.glowOpacity;
   }

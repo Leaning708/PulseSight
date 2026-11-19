@@ -3,6 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pulse_sight/ui/core/widgets/heartbeat_heart.dart';
 
+/// 心形视觉重心高于几何中心(两瓣在上、底部收尖),需要整体下移心形
+/// 边长的 3.5% 才能看起来居中。桌面图标实测:600 边长下移 21px。
+const double _heartOpticalDropRatio = 0.035;
+
 /// 应用图标源图生成器。
 ///
 /// 用应用自身的 [HeartbeatHeart] 绘制器渲染图标源图并写入
@@ -64,7 +68,7 @@ class AppIconArtwork extends StatelessWidget {
       child: CustomPaint(
         painter: _IconCardPainter(),
         // 心形整体偏上重(两瓣在上、下尖收尾),光学中心略高于几何中心,
-        // 故在几何居中的基础上整体下移约 21px(Alignment.y 0.1)。
+        // 故在几何居中的基础上整体下移(600 × 3.5% ≈ 21px)。
         child: Align(
           alignment: const Alignment(0, 0.1),
           child: HeartbeatHeart(
@@ -81,8 +85,16 @@ class AppIconArtwork extends StatelessWidget {
 }
 
 /// Android 自适应图标前景:透明底 + 居中红心(系统按安全区裁切)。
+///
+/// 尺寸按「108dp 画布 / 72dp 可见圆区」换算:心形约占自身绘制区的 94%,
+/// 取 560 后落在画布约 51%,约为可见圆区直径的 77%,四周留有呼吸感而
+/// 不贴边。配合 pubspec 的 `adaptive_icon_foreground_inset: 0`——此前
+/// 默认 16% 的额外内缩会把心形压到画布约 35%,看起来"黑边过大"。
 class AppIconForeground extends StatelessWidget {
   const AppIconForeground({super.key});
+
+  /// 心形绘制区边长(1024 画布内)。
+  static const double heartSize = 560;
 
   @override
   Widget build(BuildContext context) {
@@ -90,11 +102,15 @@ class AppIconForeground extends StatelessWidget {
       width: 1024,
       height: 1024,
       child: Center(
-        child: HeartbeatHeart(
-          size: 560,
-          bpm: 72,
-          pulsePhase: 0.5,
-          heartPulseEnabled: false,
+        // 与桌面图标一致的光学居中:整体下移心形边长的 3.5%。
+        child: Transform.translate(
+          offset: const Offset(0, heartSize * _heartOpticalDropRatio),
+          child: const HeartbeatHeart(
+            size: heartSize,
+            bpm: 72,
+            pulsePhase: 0.5,
+            heartPulseEnabled: false,
+          ),
         ),
       ),
     );

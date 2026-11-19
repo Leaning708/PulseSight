@@ -61,25 +61,26 @@ class OverlayStyle {
     this.bpmFontSize = 20,
     this.bpmPosition = BpmPosition.bottom,
     this.ecgStyle = EcgStyle.classic,
-    this.gap = 6,
-    this.opacity = 1.0,
+    this.heartTextGap = 6,
+    this.contentOpacity = 1.0,
     this.backgroundOpacity = 0.0,
     this.backgroundColor = defaultBackgroundColor,
-    this.backgroundWidth = 130,
-    this.backgroundHeight = 170,
-    this.textColor = defaultTextColor,
+    this.backgroundWidth = defaultBackgroundWidth,
+    this.backgroundHeight = defaultBackgroundHeight,
+    this.bpmColor = defaultTextColor,
     this.heartColor = defaultHeartColor,
     this.ecgColor = defaultEcgColor,
     this.showBpmLabel = true,
-    this.textWeight = 700,
-    this.textFontFamily,
+    this.bpmWeight = 700,
+    this.bpmFontFamily,
     this.showChart = false,
     this.chartSeconds = 30,
     this.chartLineColor = defaultChartLineColor,
     this.chartHeight = 84,
     this.chartSpacing = 8,
     this.heartPulseEnabled = true,
-    this.textPulseEnabled = true,
+    this.bpmPulseEnabled = true,
+    this.glowEnabled = true,
     this.glowRadius = 1.0,
     this.glowOpacity = 0.5,
   });
@@ -97,10 +98,10 @@ class OverlayStyle {
   final EcgStyle ecgStyle;
 
   /// 心形与数字之间的间距(逻辑像素)。
-  final double gap;
+  final double heartTextGap;
 
-  /// 心率内容(心形 + 数字)不透明度(0.1 ~ 1.0)。
-  final double opacity;
+  /// 心率内容(心形 + 数字)整体不透明度(0.1 ~ 1.0)。
+  final double contentOpacity;
 
   /// 背景板(内容底部的深色底板)不透明度(0.0 = 无背景板,1.0 = 不透明)。
   final double backgroundOpacity;
@@ -114,8 +115,8 @@ class OverlayStyle {
   /// 背景板高度(逻辑像素)。
   final double backgroundHeight;
 
-  /// 心率数字文字颜色。
-  final Color textColor;
+  /// 心率数字颜色。
+  final Color bpmColor;
 
   /// 心形颜色。
   final Color heartColor;
@@ -127,10 +128,12 @@ class OverlayStyle {
   final bool heartPulseEnabled;
 
   /// 心率数字是否随心跳同步律动(关闭后数字静止)。
-  final bool textPulseEnabled;
+  final bool bpmPulseEnabled;
 
-  /// 心跳辉光强度(0 = 无辉光,1.0 = 默认,最大 3.0)。
-  /// 辉光半径倍率(0 ~ 3.0)。
+  /// 是否启用心跳辉光(关闭后不再绘制外扩光晕,半径/透明度设置保留)。
+  final bool glowEnabled;
+
+  /// 辉光半径倍率(0 = 无辉光,1.0 = 默认,最大 3.0)。
   final double glowRadius;
 
   /// 辉光透明度倍率(0.0 ~ 1.0)。
@@ -140,10 +143,10 @@ class OverlayStyle {
   final bool showBpmLabel;
 
   /// 数字字重(100 ~ 900,映射 FontWeight)。
-  final double textWeight;
+  final double bpmWeight;
 
   /// 数字字体族;null = 跟随全局字体设置(全局未设置时为系统默认)。
-  final String? textFontFamily;
+  final String? bpmFontFamily;
 
   /// 是否显示近期心率波动折线图。
   final bool showChart;
@@ -163,6 +166,12 @@ class OverlayStyle {
   /// 按采集时长折算的历史采样点数上限(按 0.8s 采样间隔估算)。
   int get chartSampleCount =>
       ((chartSeconds * 1000) / 800).round().clamp(2, 1000);
+
+  /// 背景板默认宽度(逻辑像素);Android 悬浮窗初始尺寸同源取此值。
+  static const double defaultBackgroundWidth = 130;
+
+  /// 背景板默认高度(逻辑像素)。
+  static const double defaultBackgroundHeight = 170;
 
   /// 背景板默认颜色(深灰)。
   static const Color defaultBackgroundColor = Color(0xFF17181C);
@@ -184,33 +193,34 @@ class OverlayStyle {
 
   /// 复制并替换部分字段。
   ///
-  /// [textFontFamily] 传 null 时保留原值(与其他可空字段一致);需要
-  /// 显式清空回「跟随全局字体」时传 [clearTextFontFamily] 为 true。
+  /// [bpmFontFamily] 传 null 时保留原值(与其他可空字段一致);需要
+  /// 显式清空回「跟随全局字体」时传 [clearBpmFontFamily] 为 true。
   OverlayStyle copyWith({
     double? heartSize,
     double? bpmFontSize,
     BpmPosition? bpmPosition,
     EcgStyle? ecgStyle,
-    double? gap,
-    double? opacity,
+    double? heartTextGap,
+    double? contentOpacity,
     double? backgroundOpacity,
     Color? backgroundColor,
     double? backgroundWidth,
     double? backgroundHeight,
-    Color? textColor,
+    Color? bpmColor,
     Color? heartColor,
     Color? ecgColor,
     bool? showBpmLabel,
-    double? textWeight,
-    String? textFontFamily,
-    bool clearTextFontFamily = false,
+    double? bpmWeight,
+    String? bpmFontFamily,
+    bool clearBpmFontFamily = false,
     bool? showChart,
     double? chartSeconds,
     Color? chartLineColor,
     double? chartHeight,
     double? chartSpacing,
     bool? heartPulseEnabled,
-    bool? textPulseEnabled,
+    bool? bpmPulseEnabled,
+    bool? glowEnabled,
     double? glowRadius,
     double? glowOpacity,
   }) {
@@ -219,27 +229,28 @@ class OverlayStyle {
       bpmFontSize: bpmFontSize ?? this.bpmFontSize,
       bpmPosition: bpmPosition ?? this.bpmPosition,
       ecgStyle: ecgStyle ?? this.ecgStyle,
-      gap: gap ?? this.gap,
-      opacity: opacity ?? this.opacity,
+      heartTextGap: heartTextGap ?? this.heartTextGap,
+      contentOpacity: contentOpacity ?? this.contentOpacity,
       backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
       backgroundColor: backgroundColor ?? this.backgroundColor,
       backgroundWidth: backgroundWidth ?? this.backgroundWidth,
       backgroundHeight: backgroundHeight ?? this.backgroundHeight,
-      textColor: textColor ?? this.textColor,
+      bpmColor: bpmColor ?? this.bpmColor,
       heartColor: heartColor ?? this.heartColor,
       ecgColor: ecgColor ?? this.ecgColor,
       showBpmLabel: showBpmLabel ?? this.showBpmLabel,
-      textWeight: textWeight ?? this.textWeight,
-      textFontFamily: clearTextFontFamily
+      bpmWeight: bpmWeight ?? this.bpmWeight,
+      bpmFontFamily: clearBpmFontFamily
           ? null
-          : (textFontFamily ?? this.textFontFamily),
+          : (bpmFontFamily ?? this.bpmFontFamily),
       showChart: showChart ?? this.showChart,
       chartSeconds: chartSeconds ?? this.chartSeconds,
       chartLineColor: chartLineColor ?? this.chartLineColor,
       chartHeight: chartHeight ?? this.chartHeight,
       chartSpacing: chartSpacing ?? this.chartSpacing,
       heartPulseEnabled: heartPulseEnabled ?? this.heartPulseEnabled,
-      textPulseEnabled: textPulseEnabled ?? this.textPulseEnabled,
+      bpmPulseEnabled: bpmPulseEnabled ?? this.bpmPulseEnabled,
+      glowEnabled: glowEnabled ?? this.glowEnabled,
       glowRadius: glowRadius ?? this.glowRadius,
       glowOpacity: glowOpacity ?? this.glowOpacity,
     );
@@ -251,25 +262,26 @@ class OverlayStyle {
     'bpmFontSize': bpmFontSize,
     'bpmPosition': bpmPosition.name,
     'ecgStyle': ecgStyle.name,
-    'gap': gap,
-    'opacity': opacity,
+    'heartTextGap': heartTextGap,
+    'contentOpacity': contentOpacity,
     'backgroundOpacity': backgroundOpacity,
     'backgroundColor': backgroundColor.toARGB32(),
     'backgroundWidth': backgroundWidth,
     'backgroundHeight': backgroundHeight,
-    'textColor': textColor.toARGB32(),
+    'bpmColor': bpmColor.toARGB32(),
     'heartColor': heartColor.toARGB32(),
     'ecgColor': ecgColor.toARGB32(),
     'showBpmLabel': showBpmLabel,
-    'textWeight': textWeight,
-    'textFontFamily': textFontFamily,
+    'bpmWeight': bpmWeight,
+    'bpmFontFamily': bpmFontFamily,
     'showChart': showChart,
     'chartSeconds': chartSeconds,
     'chartLineColor': chartLineColor.toARGB32(),
     'chartHeight': chartHeight,
     'chartSpacing': chartSpacing,
     'heartPulseEnabled': heartPulseEnabled,
-    'textPulseEnabled': textPulseEnabled,
+    'bpmPulseEnabled': bpmPulseEnabled,
+    'glowEnabled': glowEnabled,
     'glowRadius': glowRadius,
     'glowOpacity': glowOpacity,
   };
@@ -288,9 +300,11 @@ class OverlayStyle {
           : 20,
       bpmPosition: BpmPosition.fromString(json['bpmPosition'] as String?),
       ecgStyle: EcgStyle.fromString(json['ecgStyle'] as String?),
-      gap: json['gap'] is num ? (json['gap'] as num).toDouble() : 6,
-      opacity: json['opacity'] is num
-          ? (json['opacity'] as num).toDouble().clamp(0.1, 1.0)
+      heartTextGap: json['heartTextGap'] is num
+          ? (json['heartTextGap'] as num).toDouble()
+          : 6,
+      contentOpacity: json['contentOpacity'] is num
+          ? (json['contentOpacity'] as num).toDouble().clamp(0.1, 1.0)
           : 1.0,
       backgroundOpacity: json['backgroundOpacity'] is num
           ? (json['backgroundOpacity'] as num).toDouble().clamp(0.0, 1.0)
@@ -301,21 +315,21 @@ class OverlayStyle {
       ),
       backgroundWidth: json['backgroundWidth'] is num
           ? (json['backgroundWidth'] as num).toDouble()
-          : 130,
+          : defaultBackgroundWidth,
       backgroundHeight: json['backgroundHeight'] is num
           ? (json['backgroundHeight'] as num).toDouble()
-          : 170,
-      textColor: colorFromJson(json['textColor'], defaultTextColor),
+          : defaultBackgroundHeight,
+      bpmColor: colorFromJson(json['bpmColor'], defaultTextColor),
       heartColor: colorFromJson(json['heartColor'], defaultHeartColor),
       ecgColor: colorFromJson(json['ecgColor'], defaultEcgColor),
       showBpmLabel: json['showBpmLabel'] is bool
           ? json['showBpmLabel'] as bool
           : true,
-      textWeight: json['textWeight'] is num
-          ? (json['textWeight'] as num).toDouble().clamp(100.0, 900.0)
+      bpmWeight: json['bpmWeight'] is num
+          ? (json['bpmWeight'] as num).toDouble().clamp(100.0, 900.0)
           : 700,
-      textFontFamily: json['textFontFamily'] is String
-          ? json['textFontFamily'] as String
+      bpmFontFamily: json['bpmFontFamily'] is String
+          ? json['bpmFontFamily'] as String
           : null,
       showChart: json['showChart'] is bool ? json['showChart'] as bool : false,
       chartSeconds: json['chartSeconds'] is num
@@ -334,8 +348,11 @@ class OverlayStyle {
       heartPulseEnabled: json['heartPulseEnabled'] is bool
           ? json['heartPulseEnabled'] as bool
           : true,
-      textPulseEnabled: json['textPulseEnabled'] is bool
-          ? json['textPulseEnabled'] as bool
+      bpmPulseEnabled: json['bpmPulseEnabled'] is bool
+          ? json['bpmPulseEnabled'] as bool
+          : true,
+      glowEnabled: json['glowEnabled'] is bool
+          ? json['glowEnabled'] as bool
           : true,
       glowRadius: json['glowRadius'] is num
           ? (json['glowRadius'] as num).toDouble().clamp(0.0, 3.0)
@@ -353,25 +370,26 @@ class OverlayStyle {
       other.bpmFontSize == bpmFontSize &&
       other.bpmPosition == bpmPosition &&
       other.ecgStyle == ecgStyle &&
-      other.gap == gap &&
-      other.opacity == opacity &&
+      other.heartTextGap == heartTextGap &&
+      other.contentOpacity == contentOpacity &&
       other.backgroundOpacity == backgroundOpacity &&
       other.backgroundColor == backgroundColor &&
       other.backgroundWidth == backgroundWidth &&
       other.backgroundHeight == backgroundHeight &&
-      other.textColor == textColor &&
+      other.bpmColor == bpmColor &&
       other.heartColor == heartColor &&
       other.ecgColor == ecgColor &&
       other.showBpmLabel == showBpmLabel &&
-      other.textWeight == textWeight &&
-      other.textFontFamily == textFontFamily &&
+      other.bpmWeight == bpmWeight &&
+      other.bpmFontFamily == bpmFontFamily &&
       other.showChart == showChart &&
       other.chartSeconds == chartSeconds &&
       other.chartLineColor == chartLineColor &&
       other.chartHeight == chartHeight &&
       other.chartSpacing == chartSpacing &&
       other.heartPulseEnabled == heartPulseEnabled &&
-      other.textPulseEnabled == textPulseEnabled &&
+      other.bpmPulseEnabled == bpmPulseEnabled &&
+      other.glowEnabled == glowEnabled &&
       other.glowRadius == glowRadius &&
       other.glowOpacity == glowOpacity;
 
@@ -381,25 +399,26 @@ class OverlayStyle {
     bpmFontSize,
     bpmPosition,
     ecgStyle,
-    gap,
-    opacity,
+    heartTextGap,
+    contentOpacity,
     backgroundOpacity,
     backgroundColor,
     backgroundWidth,
     backgroundHeight,
-    textColor,
+    bpmColor,
     heartColor,
     ecgColor,
     showBpmLabel,
-    textWeight,
-    textFontFamily,
+    bpmWeight,
+    bpmFontFamily,
     showChart,
     chartSeconds,
     chartLineColor,
     chartHeight,
     chartSpacing,
     heartPulseEnabled,
-    textPulseEnabled,
+    bpmPulseEnabled,
+    glowEnabled,
     glowRadius,
     glowOpacity,
   ]);

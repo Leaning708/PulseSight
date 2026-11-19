@@ -84,6 +84,33 @@ adb logcat -d | grep -E "flutter|pulse"        # 日志
 
 > install -r 后**首个 tap 可能被吞**(resume 时序),连续驱动时每个动作后截图确认状态。
 
+### macOS 端 UI 自动化:权限与替代路径
+
+拖拽 macOS 原生窗口的 Flutter 内容区(点击、滚轮、键盘)依赖**辅助功能**权限,
+否则合成事件被系统丢弃,表现为「点了没反应」而截图正常。
+
+**申请方式**:给自己启动 DSH 的终端宿主授权(本项目为 `Terminal.app`):
+系统设置 → 隐私与安全性 → 辅助功能 → `+` 加入终端 → 完全退出并重开。
+验证:`osascript -e 'tell application "System Events" to get name of first process whose frontmost is true'`
+能返回应用名即成功。
+
+**没有权限时的替代路径**(不需要辅助功能,也不需要改应用代码):连上
+`flutter run` 打印的 Dart VM Service 端口,用 `evaluate` 遍历
+`WidgetsBinding.instance.rootElement` 取到目标 Widget,直接调用它的
+`onTap` / `onChanged` / controller,效果等同于用户操作触发的回调;滚动则找
+`ScrollableState.position` 调 `jumpTo()`。
+
+### 踩坑记录
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 合成点击/滚轮/键盘无反应,截图正常 | 缺辅助功能授权 | 给终端宿主授权(见上) |
+| 授权后点击生效但滚轮仍无效 | 部分环境下 `scrollWheelEvent2Source` 不投递到 Flutter 内容区 | 改用 VM Service 找 `ScrollPosition` 调 `jumpTo()` |
+| 控件在窗口可见区之外点不到 | 桌面布局是内部滚动容器,窗口不够高 | `WindowManager.instance.setSize()` 加高窗口,或先滚动到该控件 |
+| 视觉验证截图里中文是豆腐块 | `flutter test` 环境无系统字体 | 改用 `flutter run -d macos` + 截图;或用 `FontLoader` 注入系统字体 |
+| 改完 Dart 后应用没变化 | hot reload 不重跑 `main()` | 整体重启 `flutter run` |
+| `reloadSources` 报 Kernel isolate 错误 | 与该 `flutter run` 会话的编译服务状态不一致 | 结束会话重开,不要并行多个 |
+
 ## 样式系统
 
 悬浮窗全部样式收敛在 `OverlayStyle`(不可变模型,`copyWith`/`toJson`/`fromJson`),持久化到 SharedPreferences(`overlay.*` 键,类型注册表见 `SettingsRepository._knownKeys`),并经平台通道整包 JSON 推送到悬浮窗引擎:

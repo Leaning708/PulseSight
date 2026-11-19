@@ -133,7 +133,13 @@ Windows 子进程要点:
 ### Android 悬浮窗
 
 - `flutter_overlay_window`:SYSTEM_ALERT_WINDOW 权限流 + 独立 isolate 悬浮窗引擎(`overlayMain` 入口,**必须定义在 main.dart 根库**)
-- `showOverlay(enableDrag, positionGravity: auto)`,拖动由插件原生处理
+- 拖动由插件原生处理;`showOverlay` 时按开关传入 `positionGravity`
+  (`auto` = 松手吸附左右边缘,`none` = 自由停放)与 `startPosition`
+- **触摸穿透**:`updateFlag(clickThrough / defaultFlag)` 实时切换
+  `FLAG_NOT_TOUCHABLE`;与桌面端「鼠标穿透」分开命名
+- **位置记忆**:显示期间主 isolate 每 1.2s `getOverlayPosition()` 读回位置,
+  变化才落盘(`android_overlay.x/y`)。原生推送走的是被悬浮窗引擎覆盖的
+  messenger,主引擎收不到,故以轮询为准
 - 数据:主 isolate `shareData({bpm, status, style})` → 悬浮窗 isolate `overlayListener`
 - 深色卡片样式,颜色跟随「心电图颜色」,尺寸跟随背景板宽高
 - Manifest:SYSTEM_ALERT_WINDOW、POST_NOTIFICATIONS、FOREGROUND_SERVICE(_SPECIAL_USE)、OverlayService 注册
@@ -199,7 +205,7 @@ abstract interface class HeartRateSource {
 | flutter_blue_plus | 2.3.15 | BLE 扫描 / 连接 / 订阅;Darwin 端走 Swift Package Manager,Windows 端由 `flutter_blue_plus_winrt` 提供 |
 | window_manager | **0.5.2 固定** | 0.6+ 重写为进程级绑定(nativeapi),与 desktop_multi_window 多引擎子窗口不兼容;0.5.x 为引擎级绑定。另:0.7 移除了 legacy API |
 | desktop_multi_window | 0.3.1 | 副窗口创建 + 跨窗口通信(unidirectional channel) |
-| flutter_overlay_window | 1.0.2 | Android 悬浮窗(注意 showOverlay 尺寸单位为物理像素) |
+| flutter_overlay_window | 1.0.2(内置副本) | Android 悬浮窗;`third_party/flutter_overlay_window` 打了旋转边界 / 运行时吸附 / 位置回传等补丁,见其 `PATCHES.md`。showOverlay 尺寸单位为物理像素 |
 | flutter_colorpicker | 1.1.0 | 颜色选择器(需 Material 祖先,见排障手册) |
 | provider | 6.x | DI(遵循架构技能规范) |
 | shared_preferences | 2.x | 样式/开关持久化(SharedPreferencesAsync) |

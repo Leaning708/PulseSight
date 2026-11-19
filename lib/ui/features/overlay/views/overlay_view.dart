@@ -44,7 +44,7 @@ class OverlayView extends StatelessWidget {
 
   /// 数字字重:由数值映射到 FontWeight。
   FontWeight get _numberWeight =>
-      FontWeight.values[(style.textWeight / 100).round().clamp(1, 9) - 1];
+      FontWeight.values[(style.bpmWeight / 100).round().clamp(1, 9) - 1];
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +68,7 @@ class OverlayView extends StatelessWidget {
               borderRadius: BorderRadius.circular(16),
             ),
             child: Opacity(
-              opacity: style.opacity.clamp(0.1, 1.0),
+              opacity: style.contentOpacity.clamp(0.1, 1.0),
               child: HeartbeatPulse(
                 bpm: connected ? bpm : null,
                 builder: (context, pulse, phase) {
@@ -84,6 +84,7 @@ class OverlayView extends StatelessWidget {
                     // (此前冻结在相位 0 会让 ECG 隐形并留下起点白点)。
                     pulsePhase: phase,
                     heartPulseEnabled: style.heartPulseEnabled,
+                    glowEnabled: style.glowEnabled,
                     glowRadius: style.glowRadius,
                     glowOpacity: style.glowOpacity,
                   );
@@ -94,13 +95,13 @@ class OverlayView extends StatelessWidget {
                   final numberStyle = theme.textTheme.titleLarge?.copyWith(
                     fontSize: style.bpmFontSize,
                     fontWeight: _numberWeight,
-                    fontFamily: style.textFontFamily,
-                    color: style.textColor,
+                    fontFamily: style.bpmFontFamily,
+                    color: style.bpmColor,
                     fontFeatures: [const FontFeature.tabularFigures()],
                     shadows: [shadow],
                   );
                   final labelStyle = theme.textTheme.labelSmall?.copyWith(
-                    color: style.textColor.withValues(alpha: 0.7),
+                    color: style.bpmColor.withValues(alpha: 0.7),
                     shadows: [shadow],
                   );
                   final bpmContent = BpmDisplay(
@@ -111,7 +112,7 @@ class OverlayView extends StatelessWidget {
                     labelStyle: labelStyle,
                   );
                   // 文字律动可关:关闭时数字静止(不参与脉冲缩放)。
-                  final bpmWidget = style.textPulseEnabled
+                  final bpmWidget = style.bpmPulseEnabled
                       ? ScaleTransition(scale: pulse, child: bpmContent)
                       : bpmContent;
 
@@ -122,7 +123,7 @@ class OverlayView extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           bpmWidget,
-                          SizedBox(height: style.gap),
+                          SizedBox(height: style.heartTextGap),
                           heart,
                         ],
                       );
@@ -132,7 +133,7 @@ class OverlayView extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           bpmWidget,
-                          SizedBox(width: style.gap),
+                          SizedBox(width: style.heartTextGap),
                           heart,
                         ],
                       );
@@ -142,7 +143,7 @@ class OverlayView extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           heart,
-                          SizedBox(width: style.gap),
+                          SizedBox(width: style.heartTextGap),
                           bpmWidget,
                         ],
                       );
@@ -153,7 +154,7 @@ class OverlayView extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           heart,
-                          SizedBox(height: style.gap),
+                          SizedBox(height: style.heartTextGap),
                           bpmWidget,
                         ],
                       );

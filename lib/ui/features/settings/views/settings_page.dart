@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../../core/theme/app_dimens.dart';
+import '../../../core/widgets/app_card.dart';
 import '../../home/view_models/home_view_model.dart';
 import 'sections/global_font_section.dart';
 
@@ -21,14 +22,24 @@ class SettingsPage extends StatelessWidget {
       appBar: AppBar(title: const Text('设置')),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.xl,
-            vertical: AppSpacing.lg,
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            AppSpacing.xxxl,
           ),
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: GlobalFontSection(viewModel: viewModel),
+              constraints: const BoxConstraints(maxWidth: homeNarrowMaxWidth),
+              child: AppCard(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                  AppSpacing.lg,
+                ),
+                child: GlobalFontSection(viewModel: viewModel),
+              ),
             ),
           ),
         ),

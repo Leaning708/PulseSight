@@ -56,6 +56,15 @@ dev_dependencies:
   # 图标分发:把 assets/icon 下的源图生成到 macOS / Windows / Android。
   flutter_launcher_icons: ^0.14.4
 
+  # 测试用:提供 SharedPreferences 的内存实现,驱动设置仓库的读写/迁移用例。
+  shared_preferences_platform_interface: ^2.4.2
+
+# 悬浮窗插件用内置副本:上游 1.0.2 未修复「旋转后边界按旧方向计算」等问题,
+# 补丁说明见 third_party/flutter_overlay_window/PATCHES.md。
+dependency_overrides:
+  flutter_overlay_window:
+    path: third_party/flutter_overlay_window
+
 # 应用图标配置:源图由 test/icon/app_icon_source_test.dart 生成
 # (生成方式见该文件注释),改动源图后执行 dart run flutter_launcher_icons。
 flutter_launcher_icons:
@@ -63,6 +72,9 @@ flutter_launcher_icons:
   android: true
   adaptive_icon_background: "#17181C"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  # 前景图自身已按 108dp 画布留好安全边距,不能再叠加默认的 16% 内缩,
+  # 否则心形只剩画布约 35%,看起来黑边过大。
+  adaptive_icon_foreground_inset: 0
   ios: false
   macos:
     generate: true

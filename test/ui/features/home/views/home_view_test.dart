@@ -17,6 +17,7 @@ import 'package:pulse_sight/ui/features/home/view_models/home_view_model.dart';
 import '../../../../data/services/real_heart_rate_source_fake.dart';
 
 import 'package:pulse_sight/ui/features/home/views/home_view.dart';
+import 'package:pulse_sight/ui/features/home/views/sections/overlay_style_section.dart';
 
 import '../home_view_model_test.dart'
     show
@@ -112,6 +113,47 @@ void main() {
       expect(find.text('低'), findsOneWidget);
     });
 
+    testWidgets('标题栏应用名左侧带红心图标', (tester) async {
+      await _pump(tester, width: 400, height: 900);
+
+      final appBar = find.byType(AppBar);
+      expect(
+        find.descendant(of: appBar, matching: find.byIcon(Icons.favorite)),
+        findsOneWidget,
+      );
+      // 红心在文字左侧。
+      final iconRect = tester.getRect(
+        find.descendant(of: appBar, matching: find.byIcon(Icons.favorite)),
+      );
+      final textRect = tester.getRect(
+        find.descendant(of: appBar, matching: find.text('PulseSight')),
+      );
+      expect(iconRect.right, lessThanOrEqualTo(textRect.left));
+    });
+
+    testWidgets('窄布局不再显示底部的设备支持说明', (tester) async {
+      await _pump(tester, width: 400, height: 900);
+
+      expect(find.textContaining('支持小米手环等标准 BLE 心率广播设备'), findsNothing);
+    });
+
+    testWidgets('窄布局的悬浮窗样式不渲染预览,只保留六组控件', (tester) async {
+      await _pump(tester, width: 400, height: 900);
+
+      // 预览舞台只在桌面端出现;移动端界面本身即可看到实际悬浮窗。
+      expect(find.byType(OverlayStylePreview), findsNothing);
+      expect(find.textContaining('预览'), findsNothing);
+      // 分组标题仍在,顺序为 图形 → 文字 → 心电图 → 背景 → 辉光 → 图表。
+      final groups = ['图形', '文字', '心电图', '背景', '辉光', '图表'];
+      final offsets = [
+        for (final g in groups)
+          tester.getTopLeft(find.text(g, skipOffstage: false)).dy,
+      ];
+      for (var i = 1; i < offsets.length; i++) {
+        expect(offsets[i], greaterThan(offsets[i - 1]));
+      }
+    });
+
     testWidgets('窄布局从标题栏进入设置页', (tester) async {
       await _pump(tester, width: 400, height: 900);
 
@@ -176,14 +218,15 @@ void main() {
       await tester.tap(find.byKey(const Key('desktop_nav_style')));
       await tester.pump();
       expect(find.byKey(const Key('desktop_pane_style')), findsOneWidget);
-      // 样式控件按语义分组,组标题与实时预览齐全。
-      expect(find.text('尺寸与布局'), findsOneWidget);
-      expect(find.text('颜色'), findsOneWidget);
-      expect(find.text('图表'), findsOneWidget);
-      expect(find.text('动效与文字'), findsOneWidget);
+      // 样式控件固定按「图形 / 文字 / 心电图 / 背景 / 辉光 / 图表」六组呈现。
+      for (final group in ['图形', '文字', '心电图', '背景', '辉光', '图表']) {
+        expect(find.text(group), findsOneWidget);
+      }
+      // 桌面端保留左侧实时预览;移动端不渲染预览(见下个用例)。
       expect(find.text('实时预览 · 与悬浮窗观感一致'), findsOneWidget);
-      // 颜色分组用「心形颜色」;字体默认项跟随全局字体而非系统默认。
-      expect(find.text('心形颜色'), findsOneWidget);
+      // 颜色行按稳定 id 定位(标签已精简为「颜色」,不再靠文案区分)。
+      expect(find.byKey(const Key('swatch_row_heart')), findsOneWidget);
+      // 字体默认项跟随全局字体而非系统默认。
       expect(find.text('跟随全局(系统默认)'), findsOneWidget);
       // 切走后监视器页的连接按钮离屏。
       expect(find.text('开始模拟'), findsNothing);
@@ -240,6 +283,14 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const Key('device_picker_dialog')), findsOneWidget);
+      // 弹窗必须使用应用级配色:监视舞台的深色方案若外溢到此,会出现
+      // 浅色弹窗底 + 深色方案浅色文字,文字几乎不可见。
+      final dialogTheme = Theme.of(tester.element(find.text('正在搜索附近的心率设备…')));
+      expect(dialogTheme.colorScheme.brightness, Brightness.light);
+      expect(
+        dialogTheme.dialogTheme.backgroundColor,
+        AppTheme.light.dialogTheme.backgroundColor,
+      );
       expect(find.text('正在搜索附近的心率设备…'), findsOneWidget);
 
       scanner.emitDevices(const [

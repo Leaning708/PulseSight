@@ -184,7 +184,7 @@ const String obsOverlayHtml = r'''
     const showBpm = s.bpmPosition !== 'hidden'; // hidden = 仅显示心形(移植 OverlayView)
     const heartFirst = s.bpmPosition === 'bottom' || s.bpmPosition === 'right';
     els.content.className = isRow ? 'row' : 'col';
-    els.content.style.gap = (s.gap == null ? 6 : s.gap) + 'px';
+    els.content.style.gap = (s.heartTextGap == null ? 6 : s.heartTextGap) + 'px';
     els.bpmWrap.style.gap = '4px';
 
     // 内容排序(移植 OverlayView):top/left → [数字, 心形];
@@ -200,7 +200,7 @@ const String obsOverlayHtml = r'''
     els.bpmWrap.style.display = showBpm ? '' : 'none';
 
     // 内容不透明度(0.1 ~ 1.0,移植 OverlayView 的 Opacity;背景板独立)。
-    const opacity = Math.min(Math.max(s.opacity == null ? 1.0 : s.opacity, 0.1), 1.0);
+    const opacity = Math.min(Math.max(s.contentOpacity == null ? 1.0 : s.contentOpacity, 0.1), 1.0);
     els.content.style.opacity = opacity;
 
     // 背景板(颜色/透明度/宽高)与整体内容透明度分离(移植 OverlayView)。
@@ -222,14 +222,14 @@ const String obsOverlayHtml = r'''
     // 心率数字。
     const fontSize = s.bpmFontSize == null ? 20 : s.bpmFontSize;
     els.bpmNumber.style.fontSize = fontSize + 'px';
-    els.bpmNumber.style.fontWeight = Math.round(s.textWeight == null ? 700 : s.textWeight);
-    els.bpmNumber.style.fontFamily = s.textFontFamily || 'system-ui, sans-serif';
-    els.bpmNumber.style.color = argbToCss(s.textColor == null ? 0xffffffff : s.textColor);
+    els.bpmNumber.style.fontWeight = Math.round(s.bpmWeight == null ? 700 : s.bpmWeight);
+    els.bpmNumber.style.fontFamily = s.bpmFontFamily || 'system-ui, sans-serif';
+    els.bpmNumber.style.color = argbToCss(s.bpmColor == null ? 0xffffffff : s.bpmColor);
     els.bpmNumber.style.textShadow = '0 0 4px rgba(0,0,0,0.6)';
     els.bpmLabel.style.fontSize = Math.max(10, fontSize * 0.55) + 'px';
     els.bpmLabel.style.fontFamily = els.bpmNumber.style.fontFamily;
     els.bpmLabel.style.color =
-        argbToCss(s.textColor == null ? 0xffffffff : s.textColor, 0.7);
+        argbToCss(s.bpmColor == null ? 0xffffffff : s.bpmColor, 0.7);
     els.bpmLabel.style.textShadow = '0 0 4px rgba(0,0,0,0.6)';
     els.bpmLabel.style.display = s.showBpmLabel === false ? 'none' : 'inline';
     els.bpmWrap.className = isRow ? 'v' : 'h';
@@ -418,7 +418,7 @@ const String obsOverlayHtml = r'''
     // 心跳辉光:强度随脉冲扩张变化(移植 _HeartPainter 辉光段)。
     const glowRadius = s.glowRadius == null ? 1.0 : s.glowRadius;
     const glowOpacity = s.glowOpacity == null ? 0.5 : s.glowOpacity;
-    if (connected && scale > 1.0 && glowOpacity > 0 && glowRadius > 0) {
+    if (connected && s.glowEnabled !== false && scale > 1.0 && glowOpacity > 0 && glowRadius > 0) {
       const blur = (scale - 1.0) * 90 * glowRadius;
       const [r, g, b] = argbToRgb(s.heartColor == null ? 0xffe23a3a : s.heartColor);
       const alpha = Math.min(0.45 * glowOpacity, 0.85);
@@ -461,7 +461,7 @@ const String obsOverlayHtml = r'''
 
     // 数字律动(与心形共享同一相位,移植 ScaleTransition(pulse))。
     els.bpmWrap.style.transform =
-        s.textPulseEnabled === false || !connected
+        s.bpmPulseEnabled === false || !connected
             ? 'none'
             : 'scale(' + pulseScale(phase).toFixed(4) + ')';
 

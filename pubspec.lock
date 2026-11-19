@@ -246,11 +246,10 @@ packages:
   flutter_overlay_window:
     dependency: "direct main"
     description:
-      name: flutter_overlay_window
-      sha256: "1cf8c180747c04b28bab12159b68ff8525ea9bb5210af959838a255345b5d74b"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.0.2"
+      path: "third_party/flutter_overlay_window"
+      relative: true
+    source: path
+    version: "1.0.2+pulsesight.1"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -574,7 +573,7 @@ packages:
     source: hosted
     version: "2.4.1"
   shared_preferences_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: shared_preferences_platform_interface
       sha256: "649dc798a33931919ea356c4305c2d1f81619ea6e92244070b520187b5140ef9"

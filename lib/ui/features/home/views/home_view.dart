@@ -5,6 +5,8 @@ import 'package:window_manager/window_manager.dart';
 
 import '../../../../../domain/models/heart_rate_connection.dart';
 import '../../../core/theme/app_dimens.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../settings/views/sections/global_font_section.dart';
 import '../../settings/views/settings_page.dart';
@@ -51,7 +53,7 @@ class _NarrowHomeBody extends StatelessWidget {
     return Scaffold(
       key: const Key('home_narrow_layout'),
       appBar: AppBar(
-        title: const Text('PulseSight'),
+        title: const _AppBarTitle(),
         actions: [
           IconButton(
             key: const Key('open_settings_button'),
@@ -77,37 +79,36 @@ class _NarrowHomeBody extends StatelessWidget {
               // 可访问性桥在「ListView + Tooltip」组合下会刷
               // 「Failed to update ui::AXTree」错误(flutter/flutter#182444)。
               builder: (context, _) => SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.sm,
+                  AppSpacing.lg,
+                  AppSpacing.xxxl,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // 监视区:沉浸式舞台卡片,心率是页面唯一主角。
+                    MonitorStage(viewModel: viewModel),
                     const SizedBox(height: AppSpacing.xxl),
-                    ConnectionSection(viewModel: viewModel),
-                    const SizedBox(height: AppSpacing.xxl),
-                    const Divider(),
-                    const SizedBox(height: AppSpacing.xs),
-                    DisplayTogglesSection(viewModel: viewModel),
+                    const SectionHeader(title: '显示端'),
+                    AppCard(
+                      padding: EdgeInsets.zero,
+                      child: DisplayTogglesSection(viewModel: viewModel),
+                    ),
                     if (viewModel.supportsDesktopOverlay ||
                         viewModel.supportsAndroidDisplay) ...[
-                      const SizedBox(height: AppSpacing.sm),
-                      const Divider(),
-                      const SizedBox(height: AppSpacing.sm),
-                      Text(
-                        '悬浮窗样式',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      Text(
-                        '更改实时生效并自动保存(需打开上方悬浮窗开关查看)',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      const SizedBox(height: AppSpacing.xxl),
+                      const SectionHeader(title: '悬浮窗样式'),
+                      // 样式控件自身按组成为独立卡片,这里不再外套一层卡片,
+                      // 避免卡片嵌套过重。
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xs,
                         ),
+                        child: OverlayStyleSection(viewModel: viewModel),
                       ),
-                      const SizedBox(height: AppSpacing.md),
-                      OverlayStyleSection(viewModel: viewModel),
                     ],
-                    const SizedBox(height: AppSpacing.xxl),
-                    _footnote(context),
-                    const SizedBox(height: AppSpacing.xxl),
                   ],
                 ),
               ),
@@ -119,15 +120,64 @@ class _NarrowHomeBody extends StatelessWidget {
   }
 }
 
-/// 页脚说明文字。
-Widget _footnote(BuildContext context) {
-  final scheme = Theme.of(context).colorScheme;
-  return Text(
-    '支持小米手环等标准 BLE 心率广播设备;连接前请在设备上开启「心率广播」并靠近本机。',
-    textAlign: TextAlign.center,
-    style: Theme.of(context).textTheme.bodySmall
-        ?.copyWith(color: scheme.onSurfaceVariant),
-  );
+/// 监视区舞台:深色卡片承载红心、bpm、状态与主操作按钮。
+///
+/// 浅 / 深主题下都使用深色舞台,让红色辉光与心电图有足够对比;
+/// 舞台内文字颜色固定为浅色,不随主题变化。
+class MonitorStage extends StatelessWidget {
+  /// 创建监视区舞台;[viewModel] 由上层注入。
+  const MonitorStage({super.key, required this.viewModel});
+
+  final HomeViewModel viewModel;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      key: const Key('monitor_stage'),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.xxl,
+        AppSpacing.xl,
+        AppSpacing.xl,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: AppRadius.cardBorder,
+        border: Border.all(color: AppTheme.panelBorderColor(scheme)),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1D1E23), AppTheme.stageColor],
+        ),
+      ),
+      // 注意:这里**不能**整体覆盖 Theme。`showDialog` 会用调用方 context
+      // 捕获 InheritedTheme,舞台的深色方案会污染弹窗——浅色弹窗底色配深色
+      // 方案的浅色文字,文字几乎看不见。深色方案只套在确实需要的控件上
+      // (见 ConnectionSection 的 statusPill / ScenarioSection)。
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(color: Color(0xFFE8E8EA)),
+        child: ConnectionSection(viewModel: viewModel, onStage: true),
+      ),
+    );
+  }
+}
+
+/// 标题栏应用名:左侧红心图标 + PulseSight,与桌面顶栏保持一致的品牌感。
+class _AppBarTitle extends StatelessWidget {
+  const _AppBarTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.favorite, size: 20, color: scheme.primary),
+        const SizedBox(width: AppSpacing.sm),
+        const Text('PulseSight'),
+      ],
+    );
+  }
 }
 
 /// 详情面板页头:标题 + 副标题。
@@ -463,7 +513,10 @@ class _SettingsPane extends StatelessWidget {
             children: [
               _paneHeader(context, '设置', '影响应用界面与悬浮窗的全局偏好'),
               const SizedBox(height: AppSpacing.lg),
-              GlobalFontSection(viewModel: viewModel),
+              AppCard(
+                padding: AppSpacing.allXL,
+                child: GlobalFontSection(viewModel: viewModel),
+              ),
             ],
           ),
         ),

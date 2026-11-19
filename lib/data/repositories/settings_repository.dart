@@ -49,6 +49,19 @@ abstract final class SettingsKeys {
   /// Android 状态栏(持续通知)心率显示开关。
   static const statusBarEnabled = 'status_bar.enabled';
 
+  /// Android 悬浮窗触摸穿透开关(触摸作用于下层应用)。
+  static const androidOverlayTouchPassthrough =
+      'android_overlay.touch_passthrough';
+
+  /// Android 悬浮窗拖动边缘吸附开关。
+  static const androidOverlayEdgeSnap = 'android_overlay.edge_snap';
+
+  /// Android 悬浮窗上次位置 X(逻辑像素)。
+  static const androidOverlayX = 'android_overlay.x';
+
+  /// Android 悬浮窗上次位置 Y(逻辑像素)。
+  static const androidOverlayY = 'android_overlay.y';
+
   /// 悬浮窗心形大小(逻辑像素)。
   static const overlayHeartSize = 'overlay.heart_size';
 
@@ -62,10 +75,10 @@ abstract final class SettingsKeys {
   static const overlayEcgStyle = 'overlay.ecg_style';
 
   /// 悬浮窗心形与数字的间距(逻辑像素)。
-  static const overlayGap = 'overlay.gap';
+  static const overlayHeartTextGap = 'overlay.heart_text_gap';
 
-  /// 悬浮窗心率内容(心形 + 数字)不透明度(0.1 ~ 1.0)。
-  static const overlayOpacity = 'overlay.opacity';
+  /// 悬浮窗心率内容(心形 + 数字)整体不透明度(0.1 ~ 1.0)。
+  static const overlayContentOpacity = 'overlay.content_opacity';
 
   /// 悬浮窗背景板不透明度(0.0 = 无背景板,1.0 = 不透明)。
   static const overlayBackgroundOpacity = 'overlay.background_opacity';
@@ -79,8 +92,8 @@ abstract final class SettingsKeys {
   /// 悬浮窗背景板高度(逻辑像素)。
   static const overlayBackgroundHeight = 'overlay.background_height';
 
-  /// 悬浮窗心率数字文字颜色(ARGB 十六进制字符串)。
-  static const overlayTextColor = 'overlay.text_color';
+  /// 悬浮窗心率数字颜色(ARGB 十六进制字符串)。
+  static const overlayBpmColor = 'overlay.bpm_color';
 
   /// 悬浮窗心形颜色(ARGB 十六进制字符串)。
   static const overlayHeartColor = 'overlay.heart_color';
@@ -107,16 +120,19 @@ abstract final class SettingsKeys {
   static const overlayShowBpmLabel = 'overlay.show_bpm_label';
 
   /// 悬浮窗数字字重(100 ~ 900)。
-  static const overlayTextWeight = 'overlay.text_weight';
+  static const overlayBpmWeight = 'overlay.bpm_weight';
 
   /// 悬浮窗数字字体族;空 = 系统默认。
-  static const overlayTextFontFamily = 'overlay.text_font_family';
+  static const overlayBpmFontFamily = 'overlay.bpm_font_family';
 
   /// 心形是否脉冲缩放。
   static const overlayHeartPulseEnabled = 'overlay.heart_pulse_enabled';
 
   /// 心率数字是否脉冲律动。
-  static const overlayTextPulseEnabled = 'overlay.text_pulse_enabled';
+  static const overlayBpmPulseEnabled = 'overlay.bpm_pulse_enabled';
+
+  /// 心跳辉光开关。
+  static const overlayGlowEnabled = 'overlay.glow_enabled';
 
   /// 辉光半径倍率(0.0 ~ 3.0)。
   static const overlayGlowRadius = 'overlay.glow_radius';
@@ -147,47 +163,87 @@ class SharedPreferencesSettingsRepository implements SettingsRepository {
     SettingsKeys.menubarEnabled: 'bool',
     SettingsKeys.androidOverlayEnabled: 'bool',
     SettingsKeys.statusBarEnabled: 'bool',
+    SettingsKeys.androidOverlayTouchPassthrough: 'bool',
+    SettingsKeys.androidOverlayEdgeSnap: 'bool',
+    SettingsKeys.androidOverlayX: 'double',
+    SettingsKeys.androidOverlayY: 'double',
     SettingsKeys.overlayHeartSize: 'double',
     SettingsKeys.overlayBpmFontSize: 'double',
     SettingsKeys.overlayBpmPosition: 'string',
     SettingsKeys.overlayEcgStyle: 'string',
-    SettingsKeys.overlayGap: 'double',
-    SettingsKeys.overlayOpacity: 'double',
+    SettingsKeys.overlayHeartTextGap: 'double',
+    SettingsKeys.overlayContentOpacity: 'double',
     SettingsKeys.overlayBackgroundOpacity: 'double',
     SettingsKeys.overlayBackgroundColor: 'string',
     SettingsKeys.overlayBackgroundWidth: 'double',
     SettingsKeys.overlayBackgroundHeight: 'double',
-    SettingsKeys.overlayTextColor: 'string',
+    SettingsKeys.overlayBpmColor: 'string',
     SettingsKeys.overlayHeartColor: 'string',
     SettingsKeys.overlayEcgColor: 'string',
     SettingsKeys.overlayShowBpmLabel: 'bool',
-    SettingsKeys.overlayTextWeight: 'double',
-    SettingsKeys.overlayTextFontFamily: 'string',
+    SettingsKeys.overlayBpmWeight: 'double',
+    SettingsKeys.overlayBpmFontFamily: 'string',
     SettingsKeys.overlayShowChart: 'bool',
     SettingsKeys.overlayChartSeconds: 'double',
     SettingsKeys.overlayChartLineColor: 'string',
     SettingsKeys.overlayChartHeight: 'double',
     SettingsKeys.overlayChartSpacing: 'double',
     SettingsKeys.overlayHeartPulseEnabled: 'bool',
-    SettingsKeys.overlayTextPulseEnabled: 'bool',
+    SettingsKeys.overlayBpmPulseEnabled: 'bool',
+    SettingsKeys.overlayGlowEnabled: 'bool',
     SettingsKeys.overlayGlowRadius: 'double',
     SettingsKeys.overlayGlowOpacity: 'double',
+  };
+
+  /// 旧键名 → 现键名。
+  ///
+  /// 这些字段在命名梳理时改过名(如 `overlay.opacity` 语义实为「内容整体
+  /// 不透明度」)。旧键只在首次读取时迁移一次,之后删除,避免用户升级后
+  /// 悬浮窗样式被静默重置。
+  static const Map<String, String> _legacyKeys = {
+    'overlay.gap': SettingsKeys.overlayHeartTextGap,
+    'overlay.opacity': SettingsKeys.overlayContentOpacity,
+    'overlay.text_color': SettingsKeys.overlayBpmColor,
+    'overlay.text_weight': SettingsKeys.overlayBpmWeight,
+    'overlay.text_font_family': SettingsKeys.overlayBpmFontFamily,
+    'overlay.text_pulse_enabled': SettingsKeys.overlayBpmPulseEnabled,
   };
 
   @override
   Future<Map<String, Object?>> loadAll() async {
     final values = <String, Object?>{};
     for (final entry in _knownKeys.entries) {
-      switch (entry.value) {
-        case 'bool':
-          values[entry.key] = await _prefs.getBool(entry.key);
-        case 'double':
-          values[entry.key] = await _prefs.getDouble(entry.key);
-        case 'string':
-          values[entry.key] = await _prefs.getString(entry.key);
-      }
+      values[entry.key] = await _read(entry.key, entry.value);
     }
+    await _migrateLegacyKeys(values);
     return values;
+  }
+
+  /// 按类型读取单个键。
+  Future<Object?> _read(String key, String type) async {
+    switch (type) {
+      case 'bool':
+        return _prefs.getBool(key);
+      case 'double':
+        return _prefs.getDouble(key);
+      case 'string':
+        return _prefs.getString(key);
+    }
+    return null;
+  }
+
+  /// 把旧键名的值搬到新键名(仅当新键为空时),随后删除旧键。
+  Future<void> _migrateLegacyKeys(Map<String, Object?> values) async {
+    for (final entry in _legacyKeys.entries) {
+      final legacyKey = entry.key;
+      final currentKey = entry.value;
+      if (values[currentKey] != null) continue;
+      final legacyValue = await _read(legacyKey, _knownKeys[currentKey]!);
+      if (legacyValue == null) continue;
+      await setValue(currentKey, legacyValue);
+      await _prefs.remove(legacyKey);
+      values[currentKey] = legacyValue;
+    }
   }
 
   @override

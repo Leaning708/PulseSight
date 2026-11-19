@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui' show Color;
+import 'dart:ui' show Color, Offset;
 
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart' show ThemeMode;
@@ -102,6 +102,15 @@ class HomeViewModel extends ChangeNotifier {
 
   bool _androidOverlayEnabled = false;
 
+  bool _androidTouchPassthroughEnabled = false;
+
+  bool _androidEdgeSnapEnabled = true;
+
+  /// 悬浮窗上次位置(逻辑像素);null = 尚未记录。
+  Offset? _androidOverlayPosition;
+
+  StreamSubscription<Offset>? _overlayPositionSub;
+
   bool _statusBarEnabled = false;
 
   bool _obsOverlayEnabled = false;
@@ -165,6 +174,12 @@ class HomeViewModel extends ChangeNotifier {
   /// Android 悬浮窗开关状态。
   bool get androidOverlayEnabled => _androidOverlayEnabled;
 
+  /// Android 悬浮窗触摸穿透开关状态。
+  bool get androidTouchPassthroughEnabled => _androidTouchPassthroughEnabled;
+
+  /// Android 悬浮窗拖动边缘吸附开关状态。
+  bool get androidEdgeSnapEnabled => _androidEdgeSnapEnabled;
+
   /// Android 状态栏通知开关状态。
   bool get statusBarEnabled => _statusBarEnabled;
 
@@ -180,10 +195,10 @@ class HomeViewModel extends ChangeNotifier {
   /// 实际生效的悬浮窗样式:未单独指定字体时补上全局字体。
   OverlayStyle get resolvedOverlayStyle {
     final global = _globalFontFamily;
-    if (global == null || _overlayStyle.textFontFamily != null) {
+    if (global == null || _overlayStyle.bpmFontFamily != null) {
       return _overlayStyle;
     }
-    return _overlayStyle.copyWith(textFontFamily: global);
+    return _overlayStyle.copyWith(bpmFontFamily: global);
   }
 
   /// 系统已安装字体族列表(懒加载);全局字体与悬浮窗字体下拉共用。
@@ -346,6 +361,16 @@ class HomeViewModel extends ChangeNotifier {
         (values[SettingsKeys.androidOverlayEnabled] as bool?) ?? false;
     _statusBarEnabled =
         (values[SettingsKeys.statusBarEnabled] as bool?) ?? false;
+    _androidTouchPassthroughEnabled =
+        (values[SettingsKeys.androidOverlayTouchPassthrough] as bool?) ?? false;
+    // 边缘吸附默认开启:手机上半透明浮层贴在屏幕边缘更不容易挡住内容。
+    _androidEdgeSnapEnabled =
+        (values[SettingsKeys.androidOverlayEdgeSnap] as bool?) ?? true;
+    final overlayX = values[SettingsKeys.androidOverlayX] as double?;
+    final overlayY = values[SettingsKeys.androidOverlayY] as double?;
+    if (overlayX != null && overlayY != null) {
+      _androidOverlayPosition = Offset(overlayX, overlayY);
+    }
     _obsOverlayEnabled =
         (values[SettingsKeys.obsOverlayEnabled] as bool?) ?? false;
     _overlayStyle = OverlayStyle(
@@ -357,8 +382,9 @@ class HomeViewModel extends ChangeNotifier {
       ecgStyle: EcgStyle.fromString(
         values[SettingsKeys.overlayEcgStyle] as String?,
       ),
-      gap: (values[SettingsKeys.overlayGap] as double?) ?? 6,
-      opacity: (values[SettingsKeys.overlayOpacity] as double?) ?? 1.0,
+      heartTextGap: (values[SettingsKeys.overlayHeartTextGap] as double?) ?? 6,
+      contentOpacity:
+          (values[SettingsKeys.overlayContentOpacity] as double?) ?? 1.0,
       backgroundOpacity:
           (values[SettingsKeys.overlayBackgroundOpacity] as double?) ?? 0.0,
       backgroundColor: _colorFromHex(
@@ -369,8 +395,8 @@ class HomeViewModel extends ChangeNotifier {
           (values[SettingsKeys.overlayBackgroundWidth] as double?) ?? 130,
       backgroundHeight:
           (values[SettingsKeys.overlayBackgroundHeight] as double?) ?? 170,
-      textColor: _colorFromHex(
-        values[SettingsKeys.overlayTextColor] as String?,
+      bpmColor: _colorFromHex(
+        values[SettingsKeys.overlayBpmColor] as String?,
         OverlayStyle.defaultTextColor,
       ),
       heartColor: _colorFromHex(
@@ -390,12 +416,13 @@ class HomeViewModel extends ChangeNotifier {
       chartHeight: (values[SettingsKeys.overlayChartHeight] as double?) ?? 84,
       chartSpacing: (values[SettingsKeys.overlayChartSpacing] as double?) ?? 8,
       showBpmLabel: (values[SettingsKeys.overlayShowBpmLabel] as bool?) ?? true,
-      textWeight: (values[SettingsKeys.overlayTextWeight] as double?) ?? 700,
-      textFontFamily: values[SettingsKeys.overlayTextFontFamily] as String?,
+      bpmWeight: (values[SettingsKeys.overlayBpmWeight] as double?) ?? 700,
+      bpmFontFamily: values[SettingsKeys.overlayBpmFontFamily] as String?,
       heartPulseEnabled:
           (values[SettingsKeys.overlayHeartPulseEnabled] as bool?) ?? true,
-      textPulseEnabled:
-          (values[SettingsKeys.overlayTextPulseEnabled] as bool?) ?? true,
+      bpmPulseEnabled:
+          (values[SettingsKeys.overlayBpmPulseEnabled] as bool?) ?? true,
+      glowEnabled: (values[SettingsKeys.overlayGlowEnabled] as bool?) ?? true,
       glowRadius:
           (values[SettingsKeys.overlayGlowRadius] as double?)?.clamp(
             0.0,
@@ -419,6 +446,22 @@ class HomeViewModel extends ChangeNotifier {
     if (_menubarEnabled) {
       await _menubar?.setEnabled(true);
     }
+    if (_androidOverlayEnabled && _androidDisplay != null) {
+      // 恢复上次开启的悬浮窗。权限被系统收回时回落为关闭,避免出现
+      // 「开关是开的、屏幕上却没有悬浮窗」的假状态。
+      final granted = await _androidDisplay.ensureOverlayPermission();
+      if (granted) {
+        await _androidDisplay.showOverlay(
+          position: _androidOverlayPosition,
+          touchPassthrough: _androidTouchPassthroughEnabled,
+          edgeSnap: _androidEdgeSnapEnabled,
+        );
+      } else {
+        _androidOverlayEnabled = false;
+        await _settings.setValue(SettingsKeys.androidOverlayEnabled, false);
+      }
+      notifyListeners();
+    }
     if (_statusBarEnabled) {
       await _androidDisplay?.setStatusBarEnabled(true);
     }
@@ -432,6 +475,14 @@ class HomeViewModel extends ChangeNotifier {
       }
     }
     await _androidDisplay?.setStyle(resolvedOverlayStyle);
+
+    // Android 悬浮窗:把上次的穿透/吸附/位置状态交给显示端,并订阅位置回传。
+    final android = _androidDisplay;
+    if (android != null) {
+      _overlayPositionSub = android.overlayPositionStream.listen(
+        _onOverlayPositionChanged,
+      );
+    }
     _heartRateHistory.maxLength = _overlayStyle.chartSampleCount;
     notifyListeners();
 
@@ -633,7 +684,12 @@ class HomeViewModel extends ChangeNotifier {
     if (value) {
       final granted = await _androidDisplay?.ensureOverlayPermission() ?? false;
       if (!granted) return false;
-      await _androidDisplay?.showOverlay();
+      // 显示时带入上次位置与当前交互选项。
+      await _androidDisplay?.showOverlay(
+        position: _androidOverlayPosition,
+        touchPassthrough: _androidTouchPassthroughEnabled,
+        edgeSnap: _androidEdgeSnapEnabled,
+      );
     } else {
       await _androidDisplay?.hideOverlay();
     }
@@ -641,6 +697,34 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
     await _settings.setValue(SettingsKeys.androidOverlayEnabled, value);
     return true;
+  }
+
+  /// 悬浮窗位置变化:记录并持久化,下次显示从该位置恢复。
+  void _onOverlayPositionChanged(Offset position) {
+    _androidOverlayPosition = position;
+    unawaited(_settings.setValue(SettingsKeys.androidOverlayX, position.dx));
+    unawaited(_settings.setValue(SettingsKeys.androidOverlayY, position.dy));
+  }
+
+  /// 开关 Android 悬浮窗触摸穿透并持久化。
+  Future<void> setAndroidTouchPassthroughEnabled(bool value) async {
+    if (_androidTouchPassthroughEnabled == value) return;
+    _androidTouchPassthroughEnabled = value;
+    notifyListeners();
+    await _settings.setValue(
+      SettingsKeys.androidOverlayTouchPassthrough,
+      value,
+    );
+    await _androidDisplay?.setTouchPassthrough(value);
+  }
+
+  /// 开关 Android 悬浮窗边缘吸附并持久化。
+  Future<void> setAndroidEdgeSnapEnabled(bool value) async {
+    if (_androidEdgeSnapEnabled == value) return;
+    _androidEdgeSnapEnabled = value;
+    notifyListeners();
+    await _settings.setValue(SettingsKeys.androidOverlayEdgeSnap, value);
+    await _androidDisplay?.setEdgeSnap(value);
   }
 
   /// 开关状态栏心率通知;通知权限未授予时返回 false 并不改变开关状态。
@@ -718,13 +802,17 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   /// 更新心形与数字的间距。
-  void setOverlayGap(double value) {
-    _applyOverlayStyle(_overlayStyle.copyWith(gap: value.clamp(0.0, 24.0)));
+  void setOverlayHeartTextGap(double value) {
+    _applyOverlayStyle(
+      _overlayStyle.copyWith(heartTextGap: value.clamp(0.0, 24.0)),
+    );
   }
 
-  /// 更新悬浮窗心率内容(心形 + 数字)不透明度。
-  void setOverlayOpacity(double value) {
-    _applyOverlayStyle(_overlayStyle.copyWith(opacity: value.clamp(0.1, 1.0)));
+  /// 更新悬浮窗心率内容(心形 + 数字)整体不透明度。
+  void setOverlayContentOpacity(double value) {
+    _applyOverlayStyle(
+      _overlayStyle.copyWith(contentOpacity: value.clamp(0.1, 1.0)),
+    );
   }
 
   /// 更新悬浮窗背景板不透明度(0 = 无背景板)。
@@ -741,8 +829,8 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   /// 更新文字颜色并持久化。
-  void setOverlayTextColor(Color color) {
-    _applyOverlayStyle(_overlayStyle.copyWith(textColor: color));
+  void setOverlayBpmColor(Color color) {
+    _applyOverlayStyle(_overlayStyle.copyWith(bpmColor: color));
     persistOverlayStyle();
   }
 
@@ -779,19 +867,19 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   /// 更新数字字重并持久化。
-  void setOverlayTextWeight(double value) {
+  void setOverlayBpmWeight(double value) {
     _applyOverlayStyle(
-      _overlayStyle.copyWith(textWeight: value.clamp(100.0, 900.0)),
+      _overlayStyle.copyWith(bpmWeight: value.clamp(100.0, 900.0)),
     );
     persistOverlayStyle();
   }
 
   /// 更新数字字体族并持久化;null 表示跟随全局字体。
-  void setOverlayTextFontFamily(String? family) {
+  void setOverlayBpmFontFamily(String? family) {
     _applyOverlayStyle(
       _overlayStyle.copyWith(
-        textFontFamily: family,
-        clearTextFontFamily: family == null,
+        bpmFontFamily: family,
+        clearBpmFontFamily: family == null,
       ),
     );
     persistOverlayStyle();
@@ -849,8 +937,14 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   /// 更新文字律动开关并持久化。
-  void setOverlayTextPulseEnabled(bool value) {
-    _applyOverlayStyle(_overlayStyle.copyWith(textPulseEnabled: value));
+  void setOverlayBpmPulseEnabled(bool value) {
+    _applyOverlayStyle(_overlayStyle.copyWith(bpmPulseEnabled: value));
+    persistOverlayStyle();
+  }
+
+  /// 开关心跳辉光并持久化(半径/透明度设置保留,重新打开即恢复)。
+  void setOverlayGlowEnabled(bool value) {
+    _applyOverlayStyle(_overlayStyle.copyWith(glowEnabled: value));
     persistOverlayStyle();
   }
 
@@ -933,10 +1027,13 @@ class HomeViewModel extends ChangeNotifier {
       SettingsKeys.overlayEcgStyle,
       _overlayStyle.ecgStyle.name,
     );
-    await _settings.setValue(SettingsKeys.overlayGap, _overlayStyle.gap);
     await _settings.setValue(
-      SettingsKeys.overlayOpacity,
-      _overlayStyle.opacity,
+      SettingsKeys.overlayHeartTextGap,
+      _overlayStyle.heartTextGap,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayContentOpacity,
+      _overlayStyle.contentOpacity,
     );
     await _settings.setValue(
       SettingsKeys.overlayBackgroundOpacity,
@@ -955,8 +1052,8 @@ class HomeViewModel extends ChangeNotifier {
       _overlayStyle.backgroundHeight,
     );
     await _settings.setValue(
-      SettingsKeys.overlayTextColor,
-      _overlayStyle.textColor.toARGB32().toRadixString(16),
+      SettingsKeys.overlayBpmColor,
+      _overlayStyle.bpmColor.toARGB32().toRadixString(16),
     );
     await _settings.setValue(
       SettingsKeys.overlayHeartColor,
@@ -995,20 +1092,24 @@ class HomeViewModel extends ChangeNotifier {
       _overlayStyle.showChart,
     );
     await _settings.setValue(
-      SettingsKeys.overlayTextWeight,
-      _overlayStyle.textWeight,
+      SettingsKeys.overlayBpmWeight,
+      _overlayStyle.bpmWeight,
     );
     await _settings.setValue(
-      SettingsKeys.overlayTextFontFamily,
-      _overlayStyle.textFontFamily,
+      SettingsKeys.overlayBpmFontFamily,
+      _overlayStyle.bpmFontFamily,
     );
     await _settings.setValue(
       SettingsKeys.overlayHeartPulseEnabled,
       _overlayStyle.heartPulseEnabled,
     );
     await _settings.setValue(
-      SettingsKeys.overlayTextPulseEnabled,
-      _overlayStyle.textPulseEnabled,
+      SettingsKeys.overlayBpmPulseEnabled,
+      _overlayStyle.bpmPulseEnabled,
+    );
+    await _settings.setValue(
+      SettingsKeys.overlayGlowEnabled,
+      _overlayStyle.glowEnabled,
     );
     await _settings.setValue(
       SettingsKeys.overlayGlowRadius,
@@ -1028,6 +1129,7 @@ class HomeViewModel extends ChangeNotifier {
     _scanningSub?.cancel();
     _errorsSub?.cancel();
     _modeSub?.cancel();
+    _overlayPositionSub?.cancel();
     _appMenu?.setToggleHandler(null);
     _appMenu?.setRefreshHandler(null);
     super.dispose();

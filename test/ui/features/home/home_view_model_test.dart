@@ -306,9 +306,37 @@ class FakeAndroidDisplay implements AndroidDisplay {
     return overlayPermissionGranted;
   }
 
+  /// 最近一次显示悬浮窗时带入的位置与选项。
+  Offset? lastPosition;
+  bool lastTouchPassthrough = false;
+  bool lastEdgeSnap = true;
+
+  final StreamController<Offset> positionController =
+      StreamController<Offset>.broadcast();
+
   @override
-  Future<void> showOverlay() async {
+  Stream<Offset> get overlayPositionStream => positionController.stream;
+
+  @override
+  Future<void> showOverlay({
+    Offset? position,
+    bool touchPassthrough = false,
+    bool edgeSnap = true,
+  }) async {
     calls.add('showOverlay');
+    lastPosition = position;
+    lastTouchPassthrough = touchPassthrough;
+    lastEdgeSnap = edgeSnap;
+  }
+
+  @override
+  Future<void> setTouchPassthrough(bool enabled) async {
+    calls.add('touchPassthrough($enabled)');
+  }
+
+  @override
+  Future<void> setEdgeSnap(bool enabled) async {
+    calls.add('edgeSnap($enabled)');
   }
 
   @override
@@ -545,7 +573,7 @@ void main() {
         ..setOverlayBpmFontSize(30)
         ..setOverlayBpmPosition(BpmPosition.top)
         ..setOverlayEcgStyle(EcgStyle.flat)
-        ..setOverlayGap(12);
+        ..setOverlayHeartTextGap(12);
 
       await viewModel.persistOverlayStyle();
 
@@ -553,7 +581,7 @@ void main() {
       expect(settings.store[SettingsKeys.overlayBpmFontSize], 30.0);
       expect(settings.store[SettingsKeys.overlayBpmPosition], 'top');
       expect(settings.store[SettingsKeys.overlayEcgStyle], 'flat');
-      expect(settings.store[SettingsKeys.overlayGap], 12.0);
+      expect(settings.store[SettingsKeys.overlayHeartTextGap], 12.0);
     });
 
     test('init 恢复持久化的悬浮窗样式', () async {
@@ -562,7 +590,7 @@ void main() {
         ..[SettingsKeys.overlayBpmFontSize] = 28.0
         ..[SettingsKeys.overlayBpmPosition] = 'right'
         ..[SettingsKeys.overlayEcgStyle] = 'none'
-        ..[SettingsKeys.overlayGap] = 10.0;
+        ..[SettingsKeys.overlayHeartTextGap] = 10.0;
 
       await viewModel.init();
 
@@ -570,7 +598,7 @@ void main() {
       expect(viewModel.overlayStyle.bpmFontSize, 28);
       expect(viewModel.overlayStyle.bpmPosition, BpmPosition.right);
       expect(viewModel.overlayStyle.ecgStyle, EcgStyle.none);
-      expect(viewModel.overlayStyle.gap, 10);
+      expect(viewModel.overlayStyle.heartTextGap, 10);
     });
 
     test('init 加载系统字体列表并暴露给字体下拉', () async {
@@ -593,14 +621,14 @@ void main() {
     test('选择字体后可切回跟随全局', () async {
       await viewModel.init();
 
-      viewModel.setOverlayTextFontFamily('Microsoft YaHei');
-      expect(viewModel.overlayStyle.textFontFamily, 'Microsoft YaHei');
+      viewModel.setOverlayBpmFontFamily('Microsoft YaHei');
+      expect(viewModel.overlayStyle.bpmFontFamily, 'Microsoft YaHei');
 
-      viewModel.setOverlayTextFontFamily(null);
+      viewModel.setOverlayBpmFontFamily(null);
       await pumpEventQueue();
-      expect(viewModel.overlayStyle.textFontFamily, isNull);
+      expect(viewModel.overlayStyle.bpmFontFamily, isNull);
       expect(
-        settings.store[SettingsKeys.overlayTextFontFamily],
+        settings.store[SettingsKeys.overlayBpmFontFamily],
         isNull,
         reason: '切回跟随全局后持久化值应被移除',
       );
@@ -612,9 +640,9 @@ void main() {
       await viewModel.init();
 
       expect(viewModel.globalFontFamily, 'Microsoft YaHei');
-      expect(viewModel.resolvedOverlayStyle.textFontFamily, 'Microsoft YaHei');
+      expect(viewModel.resolvedOverlayStyle.bpmFontFamily, 'Microsoft YaHei');
       expect(
-        viewModel.overlayStyle.textFontFamily,
+        viewModel.overlayStyle.bpmFontFamily,
         isNull,
         reason: '样式本身仍为跟随全局',
       );
@@ -629,8 +657,8 @@ void main() {
       expect(viewModel.globalFontFamily, 'Microsoft YaHei');
       expect(settings.store[SettingsKeys.globalFontFamily], 'Microsoft YaHei');
       // 悬浮窗未单独指定字体,下发的是补全后的全局字体。
-      expect(desktopOverlay.styles.last.textFontFamily, 'Microsoft YaHei');
-      expect(androidDisplay.styles.last.textFontFamily, 'Microsoft YaHei');
+      expect(desktopOverlay.styles.last.bpmFontFamily, 'Microsoft YaHei');
+      expect(androidDisplay.styles.last.bpmFontFamily, 'Microsoft YaHei');
 
       await viewModel.setGlobalFontFamily(null);
       await pumpEventQueue();
@@ -640,21 +668,148 @@ void main() {
         isNull,
         reason: '恢复系统默认后持久化值应被移除',
       );
-      expect(desktopOverlay.styles.last.textFontFamily, isNull);
+      expect(desktopOverlay.styles.last.bpmFontFamily, isNull);
     });
 
     test('悬浮窗单独指定的字体优先于全局字体', () async {
       await viewModel.init();
       await viewModel.setGlobalFontFamily('Microsoft YaHei');
 
-      viewModel.setOverlayTextFontFamily('Arial');
-      expect(viewModel.resolvedOverlayStyle.textFontFamily, 'Arial');
-      expect(desktopOverlay.styles.last.textFontFamily, 'Arial');
+      viewModel.setOverlayBpmFontFamily('Arial');
+      expect(viewModel.resolvedOverlayStyle.bpmFontFamily, 'Arial');
+      expect(desktopOverlay.styles.last.bpmFontFamily, 'Arial');
 
-      viewModel.setOverlayTextFontFamily(null);
+      viewModel.setOverlayBpmFontFamily(null);
       await pumpEventQueue();
-      expect(viewModel.resolvedOverlayStyle.textFontFamily, 'Microsoft YaHei');
-      expect(desktopOverlay.styles.last.textFontFamily, 'Microsoft YaHei');
+      expect(viewModel.resolvedOverlayStyle.bpmFontFamily, 'Microsoft YaHei');
+      expect(desktopOverlay.styles.last.bpmFontFamily, 'Microsoft YaHei');
+    });
+  });
+
+  group('Android 悬浮窗交互', () {
+    late HeartRateRepository repository;
+    late FakeSettingsRepository settings;
+    late FakeAndroidDisplay display;
+    late HomeViewModel viewModel;
+
+    setUp(() async {
+      repository = HeartRateRepository(source: FakeScenarioHeartRateSource());
+      settings = FakeSettingsRepository();
+      display = FakeAndroidDisplay()..overlayPermissionGranted = true;
+      viewModel = HomeViewModel(
+        repository: repository,
+        settings: settings,
+        androidDisplay: display,
+      );
+      await viewModel.init();
+    });
+
+    tearDown(() {
+      viewModel.dispose();
+      repository.dispose();
+    });
+
+    test('触摸穿透与边缘吸附写入显示端并持久化', () async {
+      await viewModel.setAndroidTouchPassthroughEnabled(true);
+      await viewModel.setAndroidEdgeSnapEnabled(false);
+
+      expect(display.calls, contains('touchPassthrough(true)'));
+      expect(display.calls, contains('edgeSnap(false)'));
+      expect(
+        settings.store[SettingsKeys.androidOverlayTouchPassthrough],
+        isTrue,
+      );
+      expect(settings.store[SettingsKeys.androidOverlayEdgeSnap], isFalse);
+    });
+
+    test('边缘吸附默认开启', () {
+      expect(viewModel.androidEdgeSnapEnabled, isTrue);
+      expect(viewModel.androidTouchPassthroughEnabled, isFalse);
+    });
+
+    test('显示悬浮窗时带上位置与当前选项', () async {
+      await viewModel.setAndroidTouchPassthroughEnabled(true);
+      await viewModel.setAndroidEdgeSnapEnabled(false);
+      await viewModel.setAndroidOverlayEnabled(true);
+
+      expect(display.lastTouchPassthrough, isTrue);
+      expect(display.lastEdgeSnap, isFalse);
+      // 尚未拖动过,位置为空,交给系统默认。
+      expect(display.lastPosition, isNull);
+    });
+
+    test('位置回传后持久化,重新显示时恢复', () async {
+      display.positionController.add(const Offset(42, 388));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(settings.store[SettingsKeys.androidOverlayX], 42.0);
+      expect(settings.store[SettingsKeys.androidOverlayY], 388.0);
+
+      await viewModel.setAndroidOverlayEnabled(true);
+      expect(display.lastPosition, const Offset(42, 388));
+    });
+
+    test('启动时恢复上次开启的悬浮窗', () async {
+      final savedSettings = FakeSettingsRepository()
+        ..store[SettingsKeys.androidOverlayEnabled] = true;
+      final restoredRepository = HeartRateRepository(
+        source: FakeScenarioHeartRateSource(),
+      );
+      final restored = HomeViewModel(
+        repository: restoredRepository,
+        settings: savedSettings,
+        androidDisplay: display,
+      );
+      await restored.init();
+
+      expect(display.calls, contains('showOverlay'));
+      expect(restored.androidOverlayEnabled, isTrue);
+
+      restored.dispose();
+      restoredRepository.dispose();
+    });
+
+    test('权限被收回时开关回落为关闭,不留假状态', () async {
+      display.overlayPermissionGranted = false;
+      final savedSettings = FakeSettingsRepository()
+        ..store[SettingsKeys.androidOverlayEnabled] = true;
+      final restoredRepository = HeartRateRepository(
+        source: FakeScenarioHeartRateSource(),
+      );
+      final restored = HomeViewModel(
+        repository: restoredRepository,
+        settings: savedSettings,
+        androidDisplay: display,
+      );
+      await restored.init();
+
+      expect(restored.androidOverlayEnabled, isFalse);
+      expect(savedSettings.store[SettingsKeys.androidOverlayEnabled], isFalse);
+      expect(display.calls, isNot(contains('showOverlay')));
+
+      restored.dispose();
+      restoredRepository.dispose();
+    });
+
+    test('启动时读取上次位置并交给显示端', () async {
+      final savedSettings = FakeSettingsRepository()
+        ..store[SettingsKeys.androidOverlayX] = 100.0
+        ..store[SettingsKeys.androidOverlayY] = 200.0;
+      final restoredRepository = HeartRateRepository(
+        source: FakeScenarioHeartRateSource(),
+      );
+      final restored = HomeViewModel(
+        repository: restoredRepository,
+        settings: savedSettings,
+        androidDisplay: display,
+      );
+      await restored.init();
+      await restored.setAndroidOverlayEnabled(true);
+
+      expect(display.lastPosition, const Offset(100, 200));
+
+      restored.dispose();
+      restoredRepository.dispose();
     });
   });
 

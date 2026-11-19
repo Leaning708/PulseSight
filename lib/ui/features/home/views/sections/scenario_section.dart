@@ -36,23 +36,36 @@ class ScenarioSection extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final scenario = viewModel.scenario;
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<HeartRateScenario>(
-            segments: [
-              for (final s in HeartRateScenario.values)
-                ButtonSegment(value: s, label: Text(scenarioLabel(s))),
-            ],
-            selected: {scenario},
-            onSelectionChanged: (selection) =>
-                viewModel.setScenario(selection.first),
+        SegmentedButton<HeartRateScenario>(
+          segments: [
+            for (final s in HeartRateScenario.values)
+              ButtonSegment(
+                value: s,
+                label: Text(scenarioLabel(s)),
+                // 只显示选中态底色,不显示勾选图标(避免窄分段里文字换行)。
+                icon: const SizedBox.shrink(),
+              ),
+          ],
+          selected: {scenario},
+          showSelectedIcon: false,
+          style: SegmentedButton.styleFrom(
+            backgroundColor: scheme.surfaceContainerHigh.withValues(alpha: 0.6),
+            selectedBackgroundColor: scheme.primaryContainer,
+            selectedForegroundColor: scheme.onPrimaryContainer,
+            side: BorderSide.none,
+            shape: const RoundedRectangleBorder(
+              borderRadius: AppRadius.controlBorder,
+            ),
           ),
+          onSelectionChanged: (selection) =>
+              viewModel.setScenario(selection.first),
         ),
         const SizedBox(height: AppSpacing.sm),
         Text(
           scenarioDescription(scenario),
+          textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall
               ?.copyWith(color: scheme.onSurfaceVariant),
         ),
